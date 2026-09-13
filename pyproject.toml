@@ -32,6 +32,7 @@ dependencies = [
   "pillow>=10.0",
   "httpx>=0.27",
   "click>=8.1",
+  "feedparser>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -85,7 +86,7 @@ files = ["src/homely"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["rgbmatrix", "rgbmatrix.*", "yaml"]
+module = ["rgbmatrix", "rgbmatrix.*", "yaml", "feedparser"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
