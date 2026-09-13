@@ -24,7 +24,7 @@ jobs:
       - run: pytest
       - name: Upload golden diffs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: golden-diffs-${{ matrix.python-version }}
           path: tests/.golden_out
@@ -47,7 +47,7 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-static
           path: src/homely/web/static
@@ -74,7 +74,7 @@ jobs:
           homely --help
           homely modules list
           homely render --module clock --out /tmp/clock.png
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist
