@@ -21,9 +21,6 @@ from homely.render.three import (
     DepthBuffer,
     Vec3,
     m_apply,
-    m_mul,
-    m_rot_x,
-    m_rot_y,
     m_translate,
     shade,
     v_add,
@@ -83,9 +80,10 @@ class PipesModule(Module[PipesSettings]):
         n = self.settings.grid
         self.n = n
         self.occupied: set[Voxel] = set()
-        self.cam = Camera(size.w, size.h, focal=min(size.w, size.h) * 1.3)
-        # A slightly turned, slightly tilted view of the cube, sized to fill the panel.
-        self.view = m_mul(m_translate(0, 0, 3.6), m_mul(m_rot_x(-0.42), m_rot_y(0.62)))
+        # Straight-on view into the grid: the near face fills the panel, the far face is smaller,
+        # so pipes coming toward you grow and pipes heading away shrink.
+        self.cam = Camera(size.w, size.h, focal=min(size.w, size.h) * 0.97)
+        self.view = m_translate(0, 0, 3.0)
         self.cell = 2.0 / n  # cube spans [-1, 1]
         self.radius = self.cell * 0.22
         self._img = Image.new("RGB", (size.w, size.h), (0, 0, 0))
