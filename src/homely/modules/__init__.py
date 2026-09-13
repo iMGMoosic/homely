@@ -8,6 +8,7 @@ from homely.core.module import Module
 from homely.modules.clock import ClockModule
 from homely.modules.lavalamp import LavaLampModule
 from homely.modules.life import LifeModule
+from homely.modules.lightcycles import LightCyclesModule
 from homely.modules.maze import MazeModule
 from homely.modules.news import NewsModule
 from homely.modules.pipes import PipesModule
@@ -35,6 +36,7 @@ def builtin_modules() -> list[type[Module[Any]]]:
         SnakeModule,
         TreeModule,
         SkylineModule,
+        LightCyclesModule,
     ]
 
 

@@ -44,7 +44,7 @@ The installer builds the LED driver, installs homely as a systemd service, disab
 | Clock (seven-segment LCD look or pixel font) | available |
 | Weather (Open-Meteo, no API key; temperature gradient, sky strip, friendly icons) | available |
 | News (RSS/Atom feeds) | available |
-| Idle animations: maze, Qix, starfield and pipes (3D), Game of Life, lava lamp, TV static, snake, growing tree, day/night skyline | available |
+| Idle animations: maze, Qix, starfield and pipes (3D), Game of Life, lava lamp, TV static, snake, growing tree, day/night skyline, light cycles | available |
 | Sports scores (MLB, NFL, NHL, NBA) | planned |
 | Transit (Metro Transit MSP, then GTFS-RT) | planned |
 | Calendar (ICS URL) | planned |

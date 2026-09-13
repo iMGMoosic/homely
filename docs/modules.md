@@ -11,6 +11,7 @@
 | Game of Life, Lava lamp, TV static (idle animations) | Need | available | none |
 | Snake, Growing tree (idle animations) | Need | available | none |
 | Skyline (day/night idle animation) | Need | available | sun times for your location |
+| Light cycles (idle animation) | Need | available | none |
 | Sports scores | Want | planned | MLB Stats API, then NFL/NHL/NBA |
 | Transit | Want | planned | Metro Transit NexTrip (Minneapolis/St. Paul), then GTFS-RT |
 | Calendar | Want | planned | ICS URL |
@@ -92,6 +93,11 @@ to three independent qixes.
   the weather module, for your location). The sun and moon arc across, stars twinkle after dusk,
   windows light up in the evening and go dark toward morning, cars pass on the street. `timelapse`
   runs a whole day during the turn starting from now; `realtime` matches the real sky.
+
+- **Light cycles**: two to four riders race across the arena leaving walls of light. Each steers
+  by how much open room a move leaves (a bounded flood fill) and swerves late when a wall is
+  close; a crash derezzes the trail into flickering fragments, and the last rider standing
+  flashes as the winner. `cycles`, `speed`, `lookahead`, `palette` (classic blue vs orange).
 
 All of them are seeded so their goldens are reproducible, and all render in well under a
 millisecond per frame on the Mac (the 3D ones draw incrementally into a depth buffer).
