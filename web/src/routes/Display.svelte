@@ -5,6 +5,8 @@
   import SchemaForm from '../lib/form/SchemaForm.svelte';
   import { toast } from '../lib/ui/toast.svelte';
   import { clone } from '../lib/clone';
+  import PlaceSearch from '../lib/location/PlaceSearch.svelte';
+  import type { GeocodeResult } from '../api/types';
 
   let settings = $state<SettingsPayload | null>(null);
   let hardware = $state<HardwarePayload | null>(null);
@@ -98,6 +100,17 @@
     }
   }
 
+  function pickPlace(r: GeocodeResult) {
+    values.location = {
+      ...values.location,
+      latitude: Math.round(r.latitude * 10000) / 10000,
+      longitude: Math.round(r.longitude * 10000) / 10000,
+      name: r.name,
+      timezone: r.timezone ?? values.location?.timezone ?? null,
+    };
+    dirty.location = true;
+  }
+
   onMount(load);
 </script>
 
@@ -118,6 +131,7 @@
         <div class="muted small">{s.help}</div>
       </summary>
       <div style="margin-top:0.9rem">
+        {#if s.key === 'location'}<PlaceSearch onpick={pickPlace} />{/if}
         {#if values[s.key]}
           <SchemaForm
             {schema}

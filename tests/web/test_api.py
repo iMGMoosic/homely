@@ -159,3 +159,27 @@ def test_auth_when_enabled(rt: Runtime):
         assert c.get("/api/system").status_code == 401
         assert c.get("/api/system", auth=("homely", "wrong")).status_code == 401
         assert c.get("/api/system", auth=("homely", "pw")).status_code == 200
+
+
+def test_geocode_proxies_and_caches(client: TestClient, rt: Runtime):
+    import json
+
+    import httpx
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        assert request.url.params["name"] == "Minneapolis"
+        return httpx.Response(200, json=json.loads(Path("tests/fixtures/open_meteo_geocode.json").read_text()))
+
+    rt.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    r = client.get("/api/geocode?q=Minneapolis&count=3")
+    assert r.status_code == 200
+    first = r.json()[0]
+    assert first["name"] == "Minneapolis" and first["timezone"] == "America/Chicago"
+    assert first["label"] == "Minneapolis, Minnesota, United States"
+    assert abs(first["latitude"] - 44.98) < 0.01
+    r2 = client.get("/api/geocode?q=minneapolis&count=3")
+    assert r2.status_code == 200 and calls["n"] == 1  # served from cache
+    assert client.get("/api/geocode?q=a").status_code == 422

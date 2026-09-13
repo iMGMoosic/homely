@@ -1,6 +1,7 @@
 import type {
   ActionResult,
   ApiErrors,
+  GeocodeResult,
   HardwarePayload,
   ModuleCatalogEntry,
   RotationItem,
@@ -73,4 +74,6 @@ export const api = {
   system: () => request<SystemInfo>('GET', '/api/system'),
   state: () => request<StateInfo>('GET', '/api/state'),
   action: (name: string) => request<ActionResult>('POST', `/api/system/actions/${name}`),
+  geocode: (q: string) =>
+    request<GeocodeResult[]>('GET', `/api/geocode?q=${encodeURIComponent(q)}`),
 };

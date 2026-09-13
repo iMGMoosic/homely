@@ -94,3 +94,13 @@ export interface ActionResult {
   ok: boolean;
   message: string;
 }
+
+export interface GeocodeResult {
+  name: string;
+  admin1: string | null;
+  country: string | null;
+  latitude: number;
+  longitude: number;
+  timezone: string | null;
+  label: string;
+}

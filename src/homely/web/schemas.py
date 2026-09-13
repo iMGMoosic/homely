@@ -138,3 +138,13 @@ class StateInfo(BaseModel):
     brightness: int
     fps: float
     rotation: list[str]
+
+
+class GeocodeResult(BaseModel):
+    name: str
+    admin1: str | None = None
+    country: str | None = None
+    latitude: float
+    longitude: float
+    timezone: str | None = None
+    label: str

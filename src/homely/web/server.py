@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from homely import __version__
 from homely.web.errors import install_error_handlers
-from homely.web.routers import modules, settings, system, ws_events, ws_preview
+from homely.web.routers import geocode, modules, settings, system, ws_events, ws_preview
 
 if TYPE_CHECKING:
     from homely.app import Runtime
@@ -30,7 +30,7 @@ def create_app(runtime: Runtime, static_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="homely", version=__version__, docs_url="/docs", redoc_url=None)
     app.state.runtime = runtime
     install_error_handlers(app)
-    for r in (system.router, modules.router, settings.router, ws_preview.router, ws_events.router):
+    for r in (system.router, modules.router, settings.router, geocode.router, ws_preview.router, ws_events.router):
         app.include_router(r)
 
     static = static_dir or STATIC_DIR
