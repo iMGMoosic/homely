@@ -57,3 +57,28 @@ def test_future_version_rejected(tmp_path: Path):
     path.write_text("version: 99\n")
     with pytest.raises(Exception, match="newer"):
         ConfigStore(path).load()
+
+
+def test_reload_from_disk_publishes_only_changed_sections(tmp_path):
+    import time
+
+    from homely.config.store import ConfigStore
+    from homely.core.events import ConfigChanged, EventBus
+
+    bus = EventBus()
+    seen: list[str] = []
+    bus.subscribe(lambda e: seen.append(e.scope), ConfigChanged)
+    store = ConfigStore(tmp_path / "config.yaml", bus)
+    store.load()
+    assert not store.changed_on_disk()
+    text = store.path.read_text().replace("level: 60", "level: 33")
+    time.sleep(0.02)
+    store.path.write_text(text)
+    import os
+
+    os.utime(store.path, (time.time() + 5, time.time() + 5))  # make sure mtime differs
+    assert store.changed_on_disk()
+    cfg = store.reload_from_disk()
+    assert cfg.brightness.level == 33
+    assert seen == ["brightness"]
+    assert not store.changed_on_disk()

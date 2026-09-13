@@ -94,6 +94,7 @@ class Runtime:
         )
         self.loop = RenderLoop(self.scheduler, self.display, self.brightness, target_fps=cfg.rotation.target_fps)
         self.http: httpx.AsyncClient | None = None
+        self._watcher: asyncio.Task[None] | None = None
         self.instances: InstanceManager | None = None
         self.started_at = time.time()
         self.restart_pending = False
@@ -155,11 +156,16 @@ class Runtime:
         self.loop.start()
         queue, self._unsub = self.bus.subscribe_async(ConfigChanged)
         self._listener = asyncio.create_task(self._config_listener(queue), name="config-listener")
+        self._watcher = asyncio.create_task(self._watch_config_file(), name="config-watcher")
         log.info(
             "homely %s started: backend=%s size=%s config=%s", self.version, self.backend, self.size, self.config_path
         )
 
     async def stop(self) -> None:
+        if self._watcher is not None:
+            self._watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._watcher
         if self._listener is not None:
             self._listener.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -178,6 +184,19 @@ class Runtime:
         self.bus.publish(RestartRequested(reason=reason))
         if self.on_exit_request is not None:
             self.on_exit_request()
+
+    async def _watch_config_file(self, interval_s: float = 2.0) -> None:
+        """Pick up hand edits to the config file (e.g. over SSH) without a restart."""
+        while True:
+            await asyncio.sleep(interval_s)
+            if not self.store.changed_on_disk():
+                continue
+            try:
+                self.store.reload_from_disk()
+                log.info("config file changed on disk; reloaded")
+            except Exception as exc:
+                log.warning("config file changed on disk but could not be loaded: %s", exc)
+                self.store._known_mtime = self.store.disk_mtime()  # don't retry every tick
 
     async def _config_listener(self, queue: asyncio.Queue[Any]) -> None:
         while True:

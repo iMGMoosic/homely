@@ -5,8 +5,8 @@
 | Clock | Need | available | local time |
 | Weather | Need | available | Open-Meteo (no key), pluggable providers |
 | News | Need | available | RSS/Atom feeds |
-| Maze (idle animation) | Need | planned | none |
-| Qix (idle animation) | Need | planned | none |
+| Maze (idle animation) | Need | available | none |
+| Qix (idle animation) | Need | available | none |
 | Sports scores | Want | planned | MLB Stats API, then NFL/NHL/NBA |
 | Transit | Want | planned | Metro Transit NexTrip (Minneapolis/St. Paul), then GTFS-RT |
 | Calendar | Want | planned | ICS URL |
@@ -50,3 +50,24 @@ Headlines from any RSS or Atom feeds (defaults: BBC World, NPR, Hacker News). Ea
 few headlines (`headlines_per_slot`, `seconds_per_headline`), wrapped to fit, with the source name
 in its color and the item age. Feeds are fetched with conditional requests (ETag/Last-Modified),
 one bad feed never blocks the others, and `mix: interleave` takes turns between sources.
+
+## Maze (idle animation)
+
+A maze grows from the top-left corner (recursive backtracker), then a little solver walks it
+depth-first, backtracking out of dead ends (shown dim) until it reaches the red goal. The solved
+path lights up, the screen fades, and a new maze begins. `corridor` picks fine (1 px) or chunky
+(3 px) corridors; `build_speed` / `solve_speed` control the pace; `rainbow_walls` colors the walls
+by build order. Deterministic under test via a seed.
+
+## Qix (idle animation)
+
+A bundle of lines whose two endpoints drift and bounce around the panel, leaving a fading trail,
+as in the 1981 arcade game. Choose `rainbow`, `single` or `duo` colors, trail length, speed and up
+to three independent qixes.
+
+## Idle module
+
+Both animations always have something to show, so they work well as the **idle module**:
+set `rotation.idle_module` to an instance id (for example `maze`) and it is shown whenever every
+other module declines to display (no data yet, nothing scheduled). The idle module is skipped in
+the normal rotation. Or just leave them in the rotation as regular turns.

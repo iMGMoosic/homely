@@ -36,3 +36,10 @@ or a service restart.
 ## Custom fonts
 
 Drop `.bdf` files into `/etc/homely/fonts/`; modules can reference them by file stem.
+
+## Editing the file by hand
+
+You can edit the YAML over SSH while homely is running. The file is checked every couple of
+seconds; when it changes, only the sections that differ are applied live (brightness, rotation,
+location, modules). Panel, display and web changes still need a restart, and the System page says
+so. An invalid file is logged and ignored until it is fixed.

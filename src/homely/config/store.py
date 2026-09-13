@@ -8,7 +8,7 @@ import shutil
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import ValidationError
@@ -18,6 +18,17 @@ from homely.config.models import AppConfig
 from homely.core.events import ConfigChanged, EventBus
 
 log = logging.getLogger(__name__)
+
+
+_SECTIONS: tuple[Literal["panel", "display", "web", "location", "brightness", "rotation", "modules"], ...] = (
+    "panel",
+    "display",
+    "web",
+    "location",
+    "brightness",
+    "rotation",
+    "modules",
+)
 
 
 class ConfigError(RuntimeError):
@@ -46,6 +57,7 @@ class ConfigStore:
         self.state_dir = state_dir
         self._lock = threading.RLock()
         self._current: AppConfig | None = None
+        self._known_mtime: float | None = None
 
     # ---- loading -----------------------------------------------------------------
 
@@ -60,6 +72,7 @@ class ConfigStore:
                 log.info("created default config at %s", self.path)
                 return cfg
             raw = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
+            self._known_mtime = self.disk_mtime()
             if not isinstance(raw, dict):
                 raise ConfigError(f"{self.path}: top level must be a mapping")
             data, changed = migrate(raw)
@@ -92,6 +105,7 @@ class ConfigStore:
 
     def _write(self, cfg: AppConfig) -> None:
         atomic_write(self.path, dump_yaml(cfg))
+        self._known_mtime = self.disk_mtime()
 
     def save(self, cfg: AppConfig, *, scope: str = "all", instance_id: str | None = None) -> None:
         with self._lock:
@@ -115,7 +129,25 @@ class ConfigStore:
             self.save(new_cfg, scope=scope, instance_id=instance_id)
             return new_cfg
 
+    def disk_mtime(self) -> float | None:
+        try:
+            return self.path.stat().st_mtime
+        except OSError:
+            return None
+
+    def changed_on_disk(self) -> bool:
+        """True when the file was modified by something other than this process."""
+        mtime = self.disk_mtime()
+        return mtime is not None and self._known_mtime is not None and mtime != self._known_mtime
+
     def reload_from_disk(self) -> AppConfig:
+        """Re-read the file and publish a change per top-level section that differs."""
+        old = self._current
         cfg = self.load(create_default=False)
-        self.bus.publish(ConfigChanged(scope="all"))
+        if old is None:
+            self.bus.publish(ConfigChanged(scope="all"))
+            return cfg
+        for scope in _SECTIONS:
+            if getattr(old, scope) != getattr(cfg, scope):
+                self.bus.publish(ConfigChanged(scope=scope))
         return cfg

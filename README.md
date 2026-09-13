@@ -5,7 +5,7 @@ with an Adafruit RGB Matrix Bonnet, run one install command, and configure every
 your phone: clock, weather, news, transit times, sports scores, idle animations and more.
 
 > **Status: early development.** The core runtime, web UI, installer and the Clock, Weather and
-> News modules work. Idle animations, sports, transit and calendar are next. See
+> News modules and the Maze/Qix idle animations work. Sports, transit and calendar are next. See
 > [docs/modules.md](docs/modules.md).
 
 ## How it works
@@ -44,7 +44,7 @@ The installer builds the LED driver, installs homely as a systemd service, disab
 | Clock (seven-segment LCD look or pixel font) | available |
 | Weather (Open-Meteo, no API key; temperature gradient, sky strip, friendly icons) | available |
 | News (RSS/Atom feeds) | available |
-| Idle animations: maze builder/solver, Qix | planned |
+| Idle animations: maze builder/solver, Qix | available |
 | Sports scores (MLB, NFL, NHL, NBA) | planned |
 | Transit (Metro Transit MSP, then GTFS-RT) | planned |
 | Calendar (ICS URL) | planned |
