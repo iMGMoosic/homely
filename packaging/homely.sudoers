@@ -1,0 +1,2 @@
+# Allow the homely service user to reboot/shutdown and restart itself from the web UI.
+homely ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/bin/systemctl restart homely

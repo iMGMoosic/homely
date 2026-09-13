@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+tests/.golden_out/
+
+# Frontend
+web/node_modules/
+web/dist/
+src/homely/web/static/*
+!src/homely/web/static/.gitkeep
+
+# Local dev
+dev/config.yaml
+dev/secrets.yaml
+dev/state/
+*.log
+.DS_Store

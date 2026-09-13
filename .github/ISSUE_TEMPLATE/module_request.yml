@@ -1,0 +1,14 @@
+name: Module request
+description: Propose a new display module
+labels: [module]
+body:
+  - type: input
+    id: name
+    attributes: { label: Module name }
+    validations: { required: true }
+  - type: textarea
+    id: shows
+    attributes: { label: What should it show?, description: Sketch the 64x64 layout in words or ASCII. }
+  - type: textarea
+    id: data
+    attributes: { label: Data source, description: API or feed, auth requirements, rate limits, terms. }

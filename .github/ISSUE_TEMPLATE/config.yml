@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions
+    url: https://github.com/imgmoosic/homely/discussions
+    about: Ask setup questions in Discussions

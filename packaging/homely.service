@@ -1,0 +1,26 @@
+[Unit]
+Description=homely LED matrix display
+Documentation=https://github.com/imgmoosic/homely
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Starts as root: the LED matrix library needs /dev/mem to initialise GPIO,
+# then drops to the `homely` user (panel.drop_priv_user in config.yaml).
+User=root
+Environment=PYTHONUNBUFFERED=1
+Environment=HOMELY_STATE_DIR=/var/lib/homely
+ExecStart=/opt/homely/venv/bin/homely run --config /etc/homely/config.yaml
+# A restart from the web UI re-execs the process in place; this covers crashes.
+Restart=always
+RestartSec=2
+# Hardening (compatible with the in-process privilege drop).
+ProtectSystem=strict
+ReadWritePaths=/etc/homely /var/lib/homely
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

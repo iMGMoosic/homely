@@ -1,0 +1,19 @@
+name: Bug report
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: What happened?, description: What did you expect instead? }
+    validations: { required: true }
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `sudo /opt/homely/venv/bin/homely doctor`
+      render: text
+  - type: input
+    id: panel
+    attributes: { label: Panel and adapter, placeholder: "64x64 P2, Adafruit Bonnet with PWM jumper" }
+  - type: textarea
+    id: logs
+    attributes: { label: Relevant logs (`journalctl -u homely -n 100`), render: text }

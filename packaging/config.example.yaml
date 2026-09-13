@@ -1,0 +1,66 @@
+# homely example configuration. The web UI edits this file for you; hand edits are fine too.
+# Docs: docs/configuration.md and docs/hardware.md
+version: 1
+panel:
+  rows: 64
+  cols: 64
+  chain_length: 1
+  parallel: 1
+  hardware_mapping: adafruit-hat
+  gpio_slowdown: 4
+  pwm_bits: 11
+  pwm_lsb_nanoseconds: 130
+  pwm_dither_bits: 0
+  led_rgb_sequence: RGB
+  panel_type: ''
+  multiplexing: 0
+  row_address_type: 0
+  scan_mode: 0
+  pixel_mapper_config: ''
+  limit_refresh_rate_hz: 0
+  disable_hardware_pulsing: false
+  inverse_colors: false
+  show_refresh_rate: false
+  drop_privileges: true
+  drop_priv_user: homely
+  drop_priv_group: homely
+  orientation: landscape
+  rotate_direction: 90
+  gamma: 1.0
+display:
+  backend: auto
+  preview: true
+  emulated_size: null
+web:
+  host: 0.0.0.0
+  port: 8080
+  preview_fps: 20
+  auth_enabled: false
+location:
+  latitude: null
+  longitude: null
+  name: null
+  timezone: null
+  units: imperial
+  locale: en_US
+rotation:
+  default_duration_s: 15.0
+  transition: fade
+  transition_duration_s: 0.4
+  target_fps: 30
+  idle_module: null
+brightness:
+  level: 60
+  schedule:
+    enabled: false
+    rules:
+    - start: '22:00'
+      end: 07:00
+      brightness: 10
+modules:
+- instance_id: clock
+  module: clock
+  enabled: true
+  duration_s: null
+  settings: {}
+log_level: INFO
