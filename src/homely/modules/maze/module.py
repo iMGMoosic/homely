@@ -4,6 +4,7 @@ centers, one pixel at a time. Hold, clear, repeat. (After Leah's maze_board prot
 
 from __future__ import annotations
 
+import itertools
 import random
 from collections import deque
 from enum import Enum
@@ -159,7 +160,7 @@ class MazeModule(Module[MazeSettings]):
         # lead in from the left edge and out through the right edge like the prototype's open walls
         sx, sy = self._center(path[0])
         px.extend((x, sy) for x in range(self.ox, sx))
-        for a, b in zip(path, path[1:], strict=False):
+        for a, b in itertools.pairwise(path):
             (x1, y1), (x2, y2) = self._center(a), self._center(b)
             dx, dy = x2 - x1, y2 - y1
             dist = max(abs(dx), abs(dy))

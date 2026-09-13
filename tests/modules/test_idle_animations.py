@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
 from homely.core.module import FrameInfo
@@ -39,7 +41,7 @@ def test_grid_is_a_perfect_maze_with_entrance_and_exit():
     assert not g.right[g.end_row][8]  # exit open on the right edge
     path = g.shortest_path()
     assert path[0] == (g.start_row, 0) and path[-1] == (g.end_row, 8)
-    assert all(g.open_between(a, b) for a, b in zip(path, path[1:], strict=False))
+    assert all(g.open_between(a, b) for a, b in itertools.pairwise(path))
     # every cell is reachable (a spanning tree has rows*cols-1 openings)
     openings = sum(not v for row in g.right[:] for v in row[:-1]) + sum(not v for row in g.bottom[:-1] for v in row)
     assert openings == 7 * 9 - 1

@@ -214,7 +214,7 @@ class DepthBuffer:
         if len(pts) < 3:
             return
         ys = [p[1] for p in pts]
-        y0, y1 = max(0, int(math.floor(min(ys)))), min(self.height - 1, int(math.ceil(max(ys))))
+        y0, y1 = max(0, math.floor(min(ys))), min(self.height - 1, math.ceil(max(ys)))
         n = len(pts)
         for y in range(y0, y1 + 1):
             yc = y + 0.5
@@ -228,9 +228,9 @@ class DepthBuffer:
                 continue
             xs.sort()
             (xl, zl), (xr, zr) = xs[0], xs[-1]
-            xa0, xa1 = max(0, int(math.floor(xl + 0.5))), min(self.width - 1, int(math.floor(xr - 0.5)))
+            xa0, xa1 = max(0, math.floor(xl + 0.5)), min(self.width - 1, math.floor(xr - 0.5))
             if xa1 < xa0:
-                xa1 = xa0 = int(round((xl + xr) / 2))
+                xa1 = xa0 = round((xl + xr) / 2)
                 if not 0 <= xa0 < self.width:
                     continue
             span = (xr - xl) or 1.0
