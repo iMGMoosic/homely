@@ -6,10 +6,11 @@ from typing import Any
 
 from homely.core.module import Module
 from homely.modules.clock import ClockModule
+from homely.modules.weather import WeatherModule
 
 
 def builtin_modules() -> list[type[Module[Any]]]:
-    return [ClockModule]
+    return [ClockModule, WeatherModule]
 
 
 BUILTIN_MODULES = builtin_modules()

@@ -41,7 +41,7 @@ def test_health_and_fallback(client: TestClient):
 
 def test_catalog_and_rotation(client: TestClient):
     cat = client.get("/api/modules").json()
-    assert [m["id"] for m in cat] == ["clock"]
+    assert "clock" in [m["id"] for m in cat] and "weather" in [m["id"] for m in cat]
     assert cat[0]["schema"]["properties"]["time_format"]["enum"] == ["12h", "24h"]
     assert cat[0]["supports_current_size"] is True
     rot = client.get("/api/rotation").json()

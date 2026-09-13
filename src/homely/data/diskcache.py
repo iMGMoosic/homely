@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -48,7 +49,5 @@ class DiskCache:
             log.warning("disk cache write failed for %s: %s", name, exc)
 
     def delete(self, name: str) -> None:
-        try:
+        with contextlib.suppress(OSError):
             self._path(name).unlink()
-        except OSError:
-            pass
