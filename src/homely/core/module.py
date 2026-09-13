@@ -116,6 +116,9 @@ class ModuleContext:
         self._request_takeover = request_takeover
         self._release_takeover = release_takeover
         self.pollers: list[Poller] = []
+        from homely.data.diskcache import DiskCache
+
+        self.cache = DiskCache(data_dir)
 
     @property
     def http(self) -> httpx.AsyncClient:

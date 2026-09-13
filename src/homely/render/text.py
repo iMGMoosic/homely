@@ -33,6 +33,36 @@ def truncate(s: str, font: BitmapFont, max_w: int, ellipsis: str = ELLIPSIS) -> 
     return out.rstrip() + ell if out else ""
 
 
+def wrap_text(s: str, font: BitmapFont, max_w: int, max_lines: int = 0) -> list[str]:
+    """Greedy word wrap. Long words are broken. If max_lines > 0 the last line is truncated."""
+    words = s.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if font.measure(candidate) <= max_w:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+            current = ""
+        while font.measure(word) > max_w and len(word) > 1:
+            cut = len(word)
+            while cut > 1 and font.measure(word[:cut]) > max_w:
+                cut -= 1
+            lines.append(word[:cut])
+            word = word[cut:]
+        current = word
+    if current:
+        lines.append(current)
+    if max_lines and len(lines) > max_lines:
+        kept = lines[:max_lines]
+        rest = " ".join(lines[max_lines - 1 :])
+        kept[-1] = truncate(rest, font, max_w)
+        return kept
+    return lines
+
+
 def fit_text(s: str, fonts: Sequence[BitmapFont], max_w: int) -> tuple[BitmapFont, str]:
     """Pick the first (largest) font in which s fits; else truncate in the last font."""
     if not fonts:
