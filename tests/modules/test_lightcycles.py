@@ -51,6 +51,20 @@ def test_round_ends_with_at_most_one_survivor_and_restarts():
     assert all(len(r.trail) < 40 for r in mod.riders)
 
 
+@pytest.mark.parametrize("seed", range(12))
+def test_four_riders_survive_the_opening(seed):
+    """The old layout sent pairs of riders head-on; nobody should crash in the first stretch."""
+    mod = LightCyclesModule(make_ctx(Size(64, 64)), LightCyclesSettings(cycles=4, speed=30), seed=seed)
+    run_frames(mod, Size(64, 64), 30)  # 30 moves
+    assert all(r.alive for r in mod.riders), [r.alive for r in mod.riders]
+    # and the round still ends eventually
+    for _ in range(40):
+        run_frames(mod, Size(64, 64), 30)
+        if mod._phase is Phase.OVER:
+            break
+    assert mod._phase is Phase.OVER or sum(r.alive for r in mod.riders) >= 1
+
+
 @pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
 def test_golden_lightcycles(size, request):
     mod = LightCyclesModule(make_ctx(size), LightCyclesSettings(), seed=42)

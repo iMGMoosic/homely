@@ -73,11 +73,15 @@ class LightCyclesModule(Module[LightCyclesSettings]):
         self.walls: dict[Cell, int] = {}  # cell -> rider index
         colors = PALETTES[self.settings.palette]
         n = self.settings.cycles
+        # Pinwheel starts: each rider begins near an edge heading along it, so nobody faces
+        # another rider at the start (the old layout sent pairs straight into each other).
+        cx, cy = self.cols // 2, self.rows // 2
+        mx, my = self.cols // 6, self.rows // 6
         starts = [
-            ((self.cols // 5, self.rows // 2), 0),
-            ((self.cols - 1 - self.cols // 5, self.rows // 2), 2),
-            ((self.cols // 2, self.rows // 5), 1),
-            ((self.cols // 2, self.rows - 1 - self.rows // 5), 3),
+            ((mx, cy), 3),  # left edge, heading up
+            ((self.cols - 1 - mx, cy), 1),  # right edge, heading down
+            ((cx, my), 0),  # top edge, heading right
+            ((cx, self.rows - 1 - my), 2),  # bottom edge, heading left
         ]
         self.riders: list[Rider] = []
         for i in range(n):
@@ -109,21 +113,37 @@ class LightCyclesModule(Module[LightCyclesSettings]):
                     q.append(nxt)
         return len(seen)
 
-    def _clear_ahead(self, pos: Cell, d: int) -> int:
+    def _danger(self, me: Rider) -> set[Cell]:
+        """Cells the other riders' heads are about to claim: their next few cells ahead."""
+        cells: set[Cell] = set()
+        for other in self.riders:
+            if other is me or not other.alive:
+                continue
+            x, y = other.pos
+            dx, dy = DIRS[other.direction]
+            for k in range(1, 4):
+                cells.add((x + dx * k, y + dy * k))
+            # they might also turn: the cells beside their head next step
+            for d in ((other.direction + 1) % 4, (other.direction - 1) % 4):
+                cells.add((x + DIRS[d][0], y + DIRS[d][1]))
+        return cells
+
+    def _clear_ahead(self, pos: Cell, d: int, danger: set[Cell] | None = None) -> int:
         dx, dy = DIRS[d]
         n = 0
         x, y = pos
         while n < self.settings.lookahead:
             x, y = x + dx, y + dy
-            if not self._free((x, y)):
+            if not self._free((x, y)) or (danger is not None and (x, y) in danger):
                 break
             n += 1
         return n
 
     def _choose(self, r: Rider) -> int | None:
         options = [r.direction, (r.direction + 1) % 4, (r.direction - 1) % 4]
-        # Keep going straight while the road ahead is clear; swerve when a wall gets close.
-        if self._clear_ahead(r.pos, r.direction) >= self.settings.lookahead and self.rng.random() > 0.04:
+        danger = self._danger(r)
+        # Keep going straight while the road ahead is clear; swerve when a wall or rider gets close.
+        if self._clear_ahead(r.pos, r.direction, danger) >= self.settings.lookahead and self.rng.random() > 0.04:
             return r.direction
         scored: list[tuple[float, int]] = []
         for d in options:
@@ -131,8 +151,10 @@ class LightCyclesModule(Module[LightCyclesSettings]):
             if not self._free(nxt):
                 continue
             room = self._open_room(nxt)
-            ahead = self._clear_ahead(r.pos, d)
+            ahead = self._clear_ahead(r.pos, d, danger)
             score = room + ahead * 2 + (3 if d == r.direction else 0) + self.rng.random() * 2
+            if nxt in danger:
+                score -= 150  # only if nothing else is left
             scored.append((score, d))
         if not scored:
             return None
