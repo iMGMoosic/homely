@@ -16,19 +16,10 @@
 
 Want to write one? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Text style
-
-Everything on the display is drawn as a **14-segment display** by default (`display.font:
-segment`): letters, numbers and punctuation are built from the seven outer bars plus the six inner
-strokes of an alphanumeric LED display, rasterized pixel-exact at each size. Lowercase shows as
-uppercase, like a real display. Set `display.font: pixel` for classic bitmap fonts instead. Module
-code asks for fonts by their pixel-font name and the theme substitutes the matching segment size;
-`pixel:<name>` forces a bitmap font for one element.
-
 ## Clock
 
-Seven-segment digits by default (`style: segment`) with optional faint "unlit" segments, or a
-pixel font (`style: pixel`). 12/24 hour, seconds, blinking colon, date formats, per-element
+Seven-segment LCD-style digits by default (`style: segment`) with optional faint "unlit" segments,
+or a pixel font (`style: pixel`). 12/24 hour, seconds, blinking colon, date formats, per-element
 colors, and a timezone override. Layouts for every supported size.
 
 ## Weather
@@ -37,19 +28,19 @@ Data from [Open-Meteo](https://open-meteo.com) (free, no API key, non-commercial
 CC BY 4.0). Set your location under **Display → Location**; the "Find a place" search fills in
 latitude, longitude, name and timezone.
 
-The screen splits in two (left/right on wide panels, top/bottom on tall ones):
-
-- **Temperature half**: a gradient from today's high (top) to today's low (bottom) on a 38-stop
-  temperature palette (pale ice blue, deep blue, teal, sand, red, maroon). The current temperature
-  sits on it in its own temperature color with a white outline, and `H:` / `L:` at the bottom.
-- **Sky half**: takes the color of the sky right now, computed from real sun times for your
-  location (astronomical dawn and dusk, sunrise, solar noon, sunset): deep navy at night, warm
-  orange around sunrise and sunset, light blue at midday, blended smoothly in between. The
-  condition icon (sun, moon, clouds, rain, snow, storm, fog, hail; drawn procedurally so they
-  stay crisp at any size) is centered on it with the condition name beneath.
-- `view: both` adds a daily-forecast page with hourly rain-chance bars; `forecast` shows only that.
+- **Icons** are drawn procedurally in a bold, friendly style (sun, moon, clouds, rain, snow, storm,
+  fog, hail) so they stay crisp at any panel size.
+- **Background gradient**: the top of the panel is colored by today's high temperature and the
+  bottom by today's low, on a 38-stop palette (pale ice blue, deep blue, teal, sand, red, maroon).
+  `background_brightness` keeps it subtle behind the text.
+- **Sky strip**: a two-pixel strip on the right edge shows the sky over the whole day, top to
+  bottom, with a white marker at the current time. Each row is the two-tone sky of that moment
+  (navy at night, warm orange through dawn and dusk, light blue at midday), computed from real sun
+  times for your location: astronomical dawn and dusk, sunrise, solar noon and sunset.
+- **Views**: `both` shows current conditions for the first half of the turn, then the daily
+  forecast (with hourly rain-chance bars where there is room). Or pick one.
 - Metric or imperial follows the global location units. The last forecast is cached on disk so a
-  reboot shows weather immediately. Tiny 32x32 panels use a compact single-panel layout.
+  reboot shows weather immediately.
 
 Provider interface: `homely.modules.weather.providers.WeatherProvider`. Add a provider by
 implementing `fetch(lat, lon, units, timezone) -> Forecast` and registering it in `PROVIDERS`.
@@ -70,10 +61,9 @@ green through the cell centers (`solve_speed`), held for `pause_s`, and the next
 
 ## Qix (idle animation)
 
-A single jittery line whose endpoints bounce around the panel, moving a random distance each
-frame (`jitter`), with a color that wanders one channel at a time (`color_mode: walk`) and a
-short fading trail (`trail`, default 5 lines). Rainbow and single-color modes and up to three
-qixes are available.
+A bundle of lines whose two endpoints drift and bounce around the panel, leaving a fading trail,
+as in the 1981 arcade game. Choose `rainbow`, `single` or `duo` colors, trail length, speed and up
+to three independent qixes.
 
 ## Idle module
 

@@ -43,8 +43,3 @@ You can edit the YAML over SSH while homely is running. The file is checked ever
 seconds; when it changes, only the sections that differ are applied live (brightness, rotation,
 location, modules). Panel, display and web changes still need a restart, and the System page says
 so. An invalid file is logged and ignored until it is fixed.
-
-## Text style
-
-`display.font` picks the program-wide look: `segment` (default) draws all text as a 14-segment
-display; `pixel` uses bitmap fonts. It applies live from the Display page without a restart.

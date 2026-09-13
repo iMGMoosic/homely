@@ -78,19 +78,17 @@ def test_golden_maze_solved(request):
 # ---- qix ----------------------------------------------------------------------------------
 
 
-def test_qix_stays_in_bounds_and_trail_bounded():
-    mod = QixModule(make_ctx(Size(64, 64)), QixSettings(trail=5, qixes=2), seed=5)
+def test_qix_moves_and_keeps_trail_bounded():
+    mod = QixModule(make_ctx(Size(64, 64)), QixSettings(trail=10, qixes=2), seed=5)
     img = run_frames(mod, Size(64, 64), 90)
-    assert all(len(q.lines) == 5 for q in mod.qixes)
+    assert all(len(q.lines) == 10 for q in mod.qixes)
     for q in mod.qixes:
-        for v in (q.x1, q.x2):
-            assert 0 <= v <= 63
-        for v in (q.y1, q.y2):
-            assert 0 <= v <= 63
-    assert lit(img) > 10
+        for p in (q.a, q.b):
+            assert 0 <= p.x <= 63 and 0 <= p.y <= 63
+    assert lit(img) > 20
 
 
-@pytest.mark.parametrize("mode", ["walk", "rainbow", "single"])
+@pytest.mark.parametrize("mode", ["rainbow", "single", "duo"])
 def test_golden_qix_modes(mode, request):
     mod = QixModule(make_ctx(Size(64, 64)), QixSettings(color_mode=mode), seed=11)
     assert_golden(run_frames(mod, Size(64, 64), 60), f"qix/64x64/{mode}", request)
@@ -101,4 +99,4 @@ def test_golden_qix_sizes(size, request):
     mod = QixModule(make_ctx(size), QixSettings(), seed=11)
     img = run_frames(mod, size, 60)
     assert img.size == size.as_tuple()
-    assert_golden(img, f"qix/{size}/walk", request)
+    assert_golden(img, f"qix/{size}/rainbow", request)

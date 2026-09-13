@@ -38,7 +38,7 @@ from homely.display.recording import NullDisplay
 from homely.display.rgbmatrix import RgbMatrixDisplay, rgbmatrix_available
 from homely.display.web import WebDisplay
 from homely.modules import BUILTIN_MODULES
-from homely.render.fonts import add_font_dir, set_theme
+from homely.render.fonts import add_font_dir
 from homely.render.size import Size
 from homely.system import info as sysinfo
 from homely.web import schemas
@@ -137,8 +137,6 @@ class Runtime:
             return
         self._started = True
         self.open_display()
-        set_theme(self.cfg.display.font)
-        self._start_display = self.cfg.display.model_copy()
         fonts_dir = fonts_dir_for(self.config_path)
         if fonts_dir.is_dir():
             add_font_dir(fonts_dir)
@@ -211,12 +209,7 @@ class Runtime:
     async def _apply_change(self, event: ConfigChanged) -> None:
         cfg = self.cfg
         scope = event.scope
-        if scope == "display":
-            set_theme(cfg.display.font)  # applies live
-            start = getattr(self, "_start_display", None)
-            if start is None or cfg.display.model_copy(update={"font": start.font}) != start:
-                self.restart_pending = True
-        if scope in ("panel", "web", "all"):
+        if scope in ("panel", "display", "web", "all"):
             self.restart_pending = True
         if scope in ("location", "all"):
             self.location.update(cfg.location)

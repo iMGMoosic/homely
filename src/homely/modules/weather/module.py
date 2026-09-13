@@ -1,7 +1,7 @@
-"""Weather, after Leah's prototype: the screen splits in two. One half is a gradient from
-today's high (top) to low (bottom) in temperature colors with the current temperature and
-H:/L: on it; the other half takes the color of the sky right now (night, dawn, day, dusk,
-from real sun times) with the condition icon and its name.
+"""Weather: current conditions and a daily forecast, Wii-Forecast-Channel flavored.
+
+Background is a vertical gradient from today's high (top) to low (bottom), colored by
+temperature; a strip on the right edge shows the sky color across the day with a marker at now.
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ from homely.modules.weather.settings import WeatherSettings
 from homely.modules.weather.solar import SunTimes, sun_times
 from homely.modules.weather.wmo import icon_for, label_for, short_label_for
 from homely.render.canvas import Canvas
-from homely.render.color import AMBER, BLACK, WHITE, Color, dim, lerp, parse_color
-from homely.render.fonts import get_font, get_theme
-from homely.render.layout import layout_fallback
+from homely.render.color import AMBER, Color, dim, lerp, parse_color
+from homely.render.fonts import get_font
+from homely.render.layout import layout, layout_fallback
 from homely.render.size import Size
-from homely.render.text import fit_text, wrap_text
+from homely.render.text import fit_text
 from homely.render.weather_icons import draw_weather_icon
 
 STALE_AFTER = timedelta(hours=3)
@@ -28,6 +28,7 @@ CACHE_KEY = "forecast"
 HI_COLOR: Color = (255, 150, 90)
 LO_COLOR: Color = (120, 190, 255)
 BAR_COLOR: Color = (60, 150, 255)
+STRIP_W = 2
 
 
 def deg(t: float) -> str:
@@ -38,7 +39,7 @@ class WeatherModule(Module[WeatherSettings]):
     info = ModuleInfo(
         id="weather",
         name="Weather",
-        description="Current conditions on a temperature gradient beside a sky-colored panel with the icon.",
+        description="Current conditions and forecast with friendly icons and a temperature gradient.",
         tier=Tier.NEED,
         icon="weather",
         default_duration_s=20,
@@ -92,7 +93,7 @@ class WeatherModule(Module[WeatherSettings]):
     def should_display(self) -> bool:
         return self.forecast.has_value
 
-    # ---- helpers -----------------------------------------------------------------------
+    # ---- shared drawing --------------------------------------------------------------
 
     def _page(self, frame: FrameInfo) -> str:
         v = self.settings.view
@@ -100,9 +101,20 @@ class WeatherModule(Module[WeatherSettings]):
             return v
         return "current" if frame.progress < 0.5 else "forecast"
 
-    def _now(self, fc: Forecast, frame: FrameInfo) -> datetime:
-        tz = fc.current.time.tzinfo
-        return frame.now.astimezone(tz) if tz is not None else frame.now
+    def _content_width(self, c: Canvas) -> int:
+        return c.width - (STRIP_W + 2) if self._strip_fits(c) else c.width
+
+    def _strip_fits(self, c: Canvas) -> bool:
+        return self.settings.sky_strip and c.width >= 48
+
+    def _background(self, c: Canvas, fc: Forecast) -> None:
+        today = fc.today()
+        if not self.settings.temperature_gradient or today is None:
+            c.clear()
+            return
+        metric = fc.units == "metric"
+        k = self.settings.background_brightness / 100
+        c.fill_gradient_v(dim(temp_color(today.tmax, metric), k), dim(temp_color(today.tmin, metric), k))
 
     def _sun(self, fc: Forecast, now: datetime) -> SunTimes | None:
         lat, lon = fc.latitude, fc.longitude
@@ -113,27 +125,43 @@ class WeatherModule(Module[WeatherSettings]):
             lat, lon = latlon
         return sun_times(lat, lon, now.date(), now.tzinfo or self.ctx.location.tz)
 
-    def _temp_gradient(self, area: Canvas, fc: Forecast) -> None:
-        today = fc.today()
-        k = self.settings.background_brightness / 100
-        if not self.settings.temperature_gradient or today is None:
-            area.clear()
-            return
-        metric = fc.units == "metric"
-        area.fill_gradient_v(dim(temp_color(today.tmax, metric), k), dim(temp_color(today.tmin, metric), k))
+    def _sky_strip(self, c: Canvas, fc: Forecast, now: datetime) -> None:
+        """Right-edge strip: the day from midnight (top) to midnight (bottom) in sky colors.
 
-    def _sky(self, area: Canvas, fc: Forecast, now: datetime) -> None:
-        k = self.settings.background_brightness / 100
-        if not self.settings.sky_half:
-            area.clear()
+        Each row is the two-tone sky of that moment (left pixel = upper tone, right pixel =
+        lower tone): navy at night, warm orange through dawn and dusk, light blue at midday,
+        using real sun times. A white marker sits at the current time.
+        """
+        if not self._strip_fits(c):
             return
         sun = self._sun(fc, now)
-        top, bottom = sky_gradient(now, sun) if sun is not None else NIGHT
-        area.fill_gradient_v(dim(top, k), dim(bottom, k))
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        x = c.width - STRIP_W
+        for row in range(c.height):
+            t = start + timedelta(days=row / c.height)
+            top, bottom = sky_gradient(t, sun) if sun is not None else NIGHT
+            c.pixel(x, row, top)
+            c.pixel(x + 1, row, bottom)
+        marker_row = min(c.height - 1, int((now - start).total_seconds() / 86400 * c.height))
+        c.hline(x - 2, marker_row, STRIP_W + 2, (255, 255, 255))
+        if marker_row > 0:
+            c.pixel(x - 2, marker_row - 1, (255, 255, 255))
+        if marker_row < c.height - 1:
+            c.pixel(x - 2, marker_row + 1, (255, 255, 255))
 
     def _stale_dot(self, c: Canvas, frame: FrameInfo) -> None:
         if self.forecast.is_stale(frame.now, STALE_AFTER):
             c.pixel(0, c.height - 1, dim(AMBER, 0.5))
+
+    def _frame(self, c: Canvas, frame: FrameInfo) -> tuple[Forecast, Canvas, datetime] | None:
+        fc = self.forecast.value
+        if fc is None:
+            return None
+        now = frame.now.astimezone(fc.current.time.tzinfo) if fc.current.time.tzinfo else frame.now
+        self._background(c, fc)
+        self._sky_strip(c, fc, now)
+        self._stale_dot(c, frame)
+        return fc, c.sub(0, 0, self._content_width(c), c.height), now
 
     def _upcoming_days(self, fc: Forecast, now: datetime) -> list[Daily]:
         days = [d for d in fc.daily if d.date.date() > now.date()]
@@ -141,124 +169,6 @@ class WeatherModule(Module[WeatherSettings]):
 
     def _text_color(self) -> Color:
         return parse_color(self.settings.text_color)
-
-    # ---- current conditions ------------------------------------------------------------
-
-    def _temp_side(self, area: Canvas, fc: Forecast) -> None:
-        """Temperature gradient with the big current temperature and H:/L: at the bottom."""
-        self._temp_gradient(area, fc)
-        cur = fc.current
-        w, h = area.width, area.height
-        metric = fc.units == "metric"
-        today = fc.today()
-        small = get_font("5x8") if w >= 40 else get_font("4x6")
-        hi, lo = (f"H:{deg(today.tmax)}", f"L:{deg(today.tmin)}") if today else ("", "")
-        if hi and small.measure(hi) > w - 2:
-            small = get_font("4x6")
-        if hi and small.measure(hi) > w - 2 and today:
-            hi, lo = f"H{round(today.tmax)}", f"L{round(today.tmin)}"
-        hilo_h = 2 * small.line_height + 2 if hi else 0
-        names = ["10x20", "9x18", "9x15", "7x13B", "6x10", "5x8", "4x6"]
-        if get_theme() == "segment":
-            names = ["seg:17x33:3", "seg:13x25:2", *names]
-        big = [get_font(n) for n in names]
-        fits = [f for f in big if f.line_height + 2 + hilo_h <= h and f.measure(deg(cur.temp)) <= w - 2]
-        font = fits[0] if fits else big[-1]
-        temp = deg(cur.temp) if font.measure(deg(cur.temp)) <= w - 2 else f"{round(cur.temp)}"
-        color = temp_color(cur.temp, metric)
-        outline = WHITE if self.settings.outline_temperature else None
-        area.text(w // 2, 2, temp, font, color, halign="center", outline=outline)
-        y = 2 + font.line_height + 1
-        if self.settings.show_feels_like and round(cur.feels_like) != round(cur.temp) and h - y >= hilo_h + 8:
-            area.text_centered(y, f"FL {deg(cur.feels_like)}", get_font("4x6"), dim(WHITE, 0.8))
-        if hi:
-            step = small.line_height
-            base = h - 2 - 2 * step
-            if base >= y:
-                area.text(w // 2, base, hi, small, WHITE, halign="center")
-                area.text(w // 2, base + step, lo, small, WHITE, halign="center")
-
-    def _sky_side(self, area: Canvas, fc: Forecast, now: datetime) -> None:
-        """Sky-colored half with the condition icon and its name."""
-        self._sky(area, fc, now)
-        cur = fc.current
-        w, h = area.width, area.height
-        kind = icon_for(cur.code, cur.is_day)
-        label_fonts = [get_font("5x8"), get_font("4x6")] if w >= 40 else [get_font("4x6")]
-        label = label_for(cur.code, cur.is_day) if w >= 40 else short_label_for(cur.code, cur.is_day)
-        lines: list[str] = []
-        label_font = label_fonts[-1]
-        if self.settings.show_condition:
-            for f in label_fonts:
-                candidate = wrap_text(label, f, w)
-                if len(candidate) <= 2 and all(f.measure(ln) <= w for ln in candidate):
-                    label_font, lines = f, candidate
-                    break
-            else:
-                label_font = label_fonts[-1]
-                lines = wrap_text(label, label_font, w, max_lines=2)
-        text_h = len(lines) * label_font.line_height
-        icon = _snap(min(w - 4, h - text_h - 4), (8, 12, 16, 24, 32, 48, 64))
-        block = icon + (2 + text_h if lines else 0)
-        y = max(0, (h - block) // 2)
-        draw_weather_icon(area, (w - icon) // 2, y, icon, kind, is_day=cur.is_day)
-        ty = y + icon + 2
-        for line in lines:
-            area.text(w // 2, ty, line, label_font, WHITE, halign="center", outline=BLACK)
-            ty += label_font.line_height
-        if self.settings.show_place and self.ctx.location.config.name and h - ty >= 8:
-            f, place = fit_text(self.ctx.location.config.name, [get_font("4x6")], w - 2)
-            area.text(w // 2, h - f.line_height - 1, place, f, dim(WHITE, 0.8), halign="center", outline=BLACK)
-
-    def _compact(self, c: Canvas, fc: Forecast, now: datetime) -> None:
-        """32x32-class panels: no split, temperature gradient behind icon + temp + H/L."""
-        self._temp_gradient(c, fc)
-        cur = fc.current
-        w, h = c.width, c.height
-        icon = 12 if h >= 32 else 8
-        draw_weather_icon(c, 1, 1, icon, icon_for(cur.code, cur.is_day), is_day=cur.is_day)
-        font, temp = fit_text(deg(cur.temp), [get_font("5x8"), get_font("4x6")], w - icon - 3)
-        outline = WHITE if self.settings.outline_temperature else None
-        area_w = w - icon - 2
-        c.text(
-            icon + 2 + (area_w - font.measure(temp)) // 2,
-            1 + (icon - font.line_height) // 2,
-            temp,
-            font,
-            temp_color(cur.temp, fc.units == "metric"),
-            outline=outline,
-        )
-        small = get_font("4x6")
-        today = fc.today()
-        y = icon + 3
-        if today is not None and h - y >= small.line_height:
-            hi, lo = f"H{round(today.tmax)}", f"L{round(today.tmin)}"
-            total = small.measure(hi) + 3 + small.measure(lo)
-            x = (w - total) // 2
-            c.text(x, y, hi, small, WHITE)
-            c.text(x + small.measure(hi) + 3, y, lo, small, WHITE)
-            y += small.line_height + 1
-        if self.settings.show_condition and h - y >= small.line_height:
-            f, label = fit_text(short_label_for(cur.code, cur.is_day), [small], w)
-            c.text(w // 2, y, label, f, WHITE, halign="center", outline=BLACK)
-
-    def _current(self, c: Canvas, fc: Forecast, now: datetime) -> None:
-        w, h = c.width, c.height
-        if w < 48 and h < 48:
-            self._compact(c, fc, now)
-            return
-        if w >= h:
-            half = w // 2
-            self._temp_side(c.sub(0, 0, half, h), fc)
-            self._sky_side(c.sub(half + 1, 0, w - half - 1, h), fc, now)
-            c.vline(half, 0, h, BLACK)
-        else:
-            half = h // 2
-            self._temp_side(c.sub(0, 0, w, half), fc)
-            self._sky_side(c.sub(0, half + 1, w, h - half - 1), fc, now)
-            c.hline(0, half, w, BLACK)
-
-    # ---- forecast page -------------------------------------------------------------------
 
     def _draw_precip_bars(self, c: Canvas, fc: Forecast, now: datetime, y: int, h: int) -> None:
         hours = [hr for hr in fc.hourly if hr.time >= now.replace(minute=0, second=0, microsecond=0)][:12]
@@ -276,22 +186,60 @@ class WeatherModule(Module[WeatherSettings]):
                 col = lerp(dim(BAR_COLOR, 0.5), BAR_COLOR, prob / 100)
                 c.rect(i * bar_w, base - bh, bar_w - gap, bh, fill=col)
 
-    def _forecast_page(self, area: Canvas, fc: Forecast, now: datetime) -> None:
-        self._temp_gradient(area, fc)
+    # ---- 64x64 -------------------------------------------------------------------------
+
+    @layout(64, 64)
+    def render_64(self, c: Canvas, frame: FrameInfo) -> None:
+        got = self._frame(c, frame)
+        if got is None:
+            return
+        fc, area, now = got
+        if self._page(frame) == "forecast":
+            self._forecast_page(area, fc, now, icon=16)
+            return
+        cur = fc.current
+        text = self._text_color()
+        draw_weather_icon(area, 2, 2, 24, icon_for(cur.code, cur.is_day), is_day=cur.is_day)
+        font, temp = fit_text(deg(cur.temp), [get_font(n) for n in ("10x20", "9x15", "7x13B")], area.width - 29)
+        tx = 28 + (area.width - 28 - font.measure(temp)) // 2
+        area.text(tx, 4 + (20 - font.line_height) // 2, temp, font, text)
+        y = 29
+        if self.settings.show_feels_like and round(cur.feels_like) != round(cur.temp):
+            area.text_centered(y, f"feels {deg(cur.feels_like)}", get_font("4x6"), dim(text, 0.7))
+            y += 8
+        if self.settings.show_condition:
+            f, label = fit_text(
+                label_for(cur.code, cur.is_day), [get_font("6x10"), get_font("5x8"), get_font("4x6")], area.width
+            )
+            area.text_centered(y, label, f, text)
+            y += f.line_height + 1
+        today = fc.today()
+        if today is not None:
+            f58 = get_font("5x8")
+            hi, lo = f"H{deg(today.tmax)}", f"L{deg(today.tmin)}"
+            total = f58.measure(hi) + 6 + f58.measure(lo)
+            x = (area.width - total) // 2
+            area.text(x, y, hi, f58, HI_COLOR)
+            area.text(x + f58.measure(hi) + 6, y, lo, f58, LO_COLOR)
+            y += 10
+        if self.settings.show_place and self.ctx.location.config.name:
+            f, place = fit_text(self.ctx.location.config.name, [get_font("4x6"), get_font("tom-thumb")], area.width)
+            area.text_centered(max(y, area.height - 7), place, f, dim(text, 0.7))
+
+    def _forecast_page(self, area: Canvas, fc: Forecast, now: datetime, *, icon: int) -> None:
         text = self._text_color()
         days = self._upcoming_days(fc, now)
         if not days:
-            area.text_centered(area.height // 2 - 3, "NO FORECAST", get_font("4x6"), text)
+            area.text_centered(area.height // 2 - 3, "no forecast", get_font("4x6"), text)
             return
-        icon = 16 if area.height >= 40 else 8
         ncols = min(len(days), area.width // 12)
         if area.height >= area.width * 1.25 or ncols < 2:
-            self._forecast_rows(area, fc, days)
+            self._forecast_rows(area, fc, now, days)
             return
         days = days[:ncols]
         col_w = area.width // ncols
         label_font = get_font("4x6") if col_w >= 16 else get_font("tom-thumb")
-        num_font = label_font
+        num_font = get_font("4x6") if col_w >= 16 else get_font("tom-thumb")
         icon = min(icon, col_w - 2)
         for i, d in enumerate(days):
             col = area.sub(i * col_w, 0, col_w, area.height)
@@ -307,34 +255,128 @@ class WeatherModule(Module[WeatherSettings]):
             bar_h = min(14, area.height - used - 2)
             self._draw_precip_bars(area, fc, now, area.height - bar_h, bar_h)
 
-    def _forecast_rows(self, area: Canvas, fc: Forecast, days: list[Daily]) -> None:
+    def _forecast_rows(self, area: Canvas, fc: Forecast, now: datetime, days: list[Daily]) -> None:
+        """Stacked rows for tall or narrow areas: icon on the left, day and hi/lo on the right."""
         text = self._text_color()
         n = max(1, min(len(days), area.height // 16))
         row_h = min(28, area.height // n)
         icon = _snap(min(row_h - 2, area.width // 2), (8, 12, 16, 24))
-        small = get_font("4x6")
+        label = get_font("4x6")
+        small = get_font("4x6") if area.width - icon - 2 >= 24 else get_font("tom-thumb")
         for i, d in enumerate(days[:n]):
             row = area.sub(0, i * row_h, area.width, row_h)
             draw_weather_icon(row, 1, (row_h - icon) // 2, icon, icon_for(d.code), is_day=True)
             x = icon + 3
-            top = max(0, (row_h - 3 * small.line_height) // 2)
-            row.text(x, top, d.date.strftime("%a"), small, text)
-            row.text(x, top + small.line_height, f"H{round(d.tmax)}", small, HI_COLOR)
-            row.text(x, top + 2 * small.line_height, f"L{round(d.tmin)}", small, LO_COLOR)
+            avail = area.width - x
+            row.text(x, (row_h - 6 - 2 * small.line_height - 2) // 2, d.date.strftime("%a"), label, text)
+            y = (row_h - 6 - 2 * small.line_height - 2) // 2 + 7
+            hi, lo = _hilo(d.tmax, d.tmin, small.name == "tom-thumb")
+            if small.measure(hi) + 2 + small.measure(lo) <= avail:
+                row.text(x, y, hi, small, HI_COLOR)
+                row.text(x + small.measure(hi) + 3, y, lo, small, LO_COLOR)
+            else:
+                row.text(x, y, hi, small, HI_COLOR)
+                row.text(x, y + small.line_height + 1, lo, small, LO_COLOR)
 
-    # ---- entry point -------------------------------------------------------------------------
+    # ---- generic (every other size) -------------------------------------------------------
 
     @layout_fallback
     def render_any(self, c: Canvas, frame: FrameInfo) -> None:
-        fc = self.forecast.value
-        if fc is None:
+        got = self._frame(c, frame)
+        if got is None:
             return
-        now = self._now(fc, frame)
+        fc, area, now = got
         if self._page(frame) == "forecast":
-            self._forecast_page(c, fc, now)
-        else:
-            self._current(c, fc, now)
-        self._stale_dot(c, frame)
+            self._forecast_page(area, fc, now, icon=16 if area.height >= 40 else 8)
+            return
+        cur = fc.current
+        text = self._text_color()
+        w, h = area.width, area.height
+        tall = h > w
+        if tall:
+            self._current_tall(area, fc, now)
+            return
+        icon = _snap(min(h - 4, w // 3), (8, 12, 16, 24, 32, 48))
+        draw_weather_icon(area, 1, 1, icon, icon_for(cur.code, cur.is_day), is_day=cur.is_day)
+        right_x = icon + 3
+        right_w = w - right_x
+        fonts = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8", "4x6")]
+        fonts = [f for f in fonts if f.line_height <= max(8, icon)] or [get_font("4x6")]
+        font, temp = fit_text(deg(cur.temp), fonts, right_w)
+        today = fc.today()
+        small = get_font("4x6") if w >= 40 else get_font("tom-thumb")
+        tiny = small.name == "tom-thumb"
+        label = label_for(cur.code, cur.is_day) if w >= 60 else short_label_for(cur.code, cur.is_day)
+        spare = right_w - font.measure(temp) - 4
+        if spare >= 40:
+            # Wide (128x32, 128x64): temp next to the icon, condition + H/L in a column to the right.
+            ty = 1 + max(0, (icon - font.line_height) // 2)
+            area.text(right_x, ty, temp, font, text)
+            col_x = right_x + font.measure(temp) + 6
+            col_w = w - col_x
+            big = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8")]
+            cf, ctext = fit_text(label, [f for f in big if f.line_height <= (h - 4) // 2] or [small], col_w)
+            hl = get_font("6x10") if h >= 48 else small
+            block_h = cf.line_height + 2 + hl.line_height
+            cy = max(0, (h - block_h) // 2)
+            area.text(col_x, cy, ctext, cf, text)
+            if today is not None:
+                hi, lo = _hilo(today.tmax, today.tmin, hl.name == "tom-thumb")
+                area.text(col_x, cy + cf.line_height + 2, hi, hl, HI_COLOR)
+                area.text(col_x + hl.measure(hi) + 4, cy + cf.line_height + 2, lo, hl, LO_COLOR)
+            return
+        area.text(
+            right_x + (right_w - font.measure(temp)) // 2, 1 + max(0, (icon - font.line_height) // 3), temp, font, text
+        )
+        y = 1 + icon + 2
+        if today is not None and h - y >= small.line_height:
+            hi, lo = _hilo(today.tmax, today.tmin, tiny)
+            total = small.measure(hi) + 4 + small.measure(lo)
+            x = (w - total) // 2
+            area.text(x, y, hi, small, HI_COLOR)
+            area.text(x + small.measure(hi) + 4, y, lo, small, LO_COLOR)
+            y += small.line_height + 1
+        if self.settings.show_condition and h - y >= small.line_height:
+            f, label = fit_text(label, [small, get_font("tom-thumb")], w)
+            area.text_centered(y, label, f, text)
+
+    def _current_tall(self, area: Canvas, fc: Forecast, now: datetime) -> None:
+        cur = fc.current
+        text = self._text_color()
+        w, h = area.width, area.height
+        icon = _snap(min(w - 4, h // 3), (8, 12, 16, 24, 32, 48))
+        draw_weather_icon(area, (w - icon) // 2, 2, icon, icon_for(cur.code, cur.is_day), is_day=cur.is_day)
+        y = 2 + icon + 2
+        font, temp = fit_text(deg(cur.temp), [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8")], w)
+        area.text_centered(y, temp, font, text)
+        y += font.line_height + 2
+        small = get_font("4x6")
+        today = fc.today()
+        if today is not None:
+            hi, lo = _hilo(today.tmax, today.tmin, False)
+            if small.measure(hi) + 3 + small.measure(lo) <= w:
+                x = (w - small.measure(hi) - 3 - small.measure(lo)) // 2
+                area.text(x, y, hi, small, HI_COLOR)
+                area.text(x + small.measure(hi) + 3, y, lo, small, LO_COLOR)
+                y += 8
+            else:
+                area.text_centered(y, hi, small, HI_COLOR)
+                area.text_centered(y + 7, lo, small, LO_COLOR)
+                y += 15
+        if self.settings.show_condition and h - y >= 6:
+            f, label = fit_text(short_label_for(cur.code, cur.is_day), [small, get_font("tom-thumb")], w)
+            area.text_centered(y, label, f, text)
+            y += f.line_height + 3
+        days = self._upcoming_days(fc, now)
+        if days and h - y >= 40:
+            self._forecast_rows(area.sub(0, y, w, h - y), fc, now, days)
+
+
+def _hilo(tmax: float, tmin: float, tiny: bool) -> tuple[str, str]:
+    """High/low labels; the 3x5 font is too narrow for the degree sign, so drop it there."""
+    if tiny:
+        return f"H{round(tmax)}", f"L{round(tmin)}"
+    return f"H{deg(tmax)}", f"L{deg(tmin)}"
 
 
 def _snap(value: int, steps: tuple[int, ...]) -> int:
