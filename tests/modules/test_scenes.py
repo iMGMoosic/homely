@@ -85,8 +85,17 @@ def test_tree_grows_leafs_and_sheds():
         TreePhase.FADE,
     )
     assert mod.leaves
-    run_frames(mod, Size(64, 64), 400)  # seasons pass and a new sapling starts
-    assert mod._phase in (TreePhase.GROW, TreePhase.LEAF) or len(mod.nodes) < 30 or all(lf.landed for lf in mod.leaves)
+    # Seasons pass (leaf, hold, autumn, fall, fade) and a new sapling starts within a minute.
+    seen = {mod._phase}
+    canvas = Canvas(Size(64, 64))
+    for i in range(1800):
+        canvas.clear()
+        mod.render(canvas, frame(1 / 30, 3 + i / 30))
+        seen.add(mod._phase)
+        if mod._phase is TreePhase.GROW and len(mod.nodes) < 40:
+            break
+    assert {TreePhase.AUTUMN, TreePhase.FALL, TreePhase.FADE} <= seen
+    assert mod._phase is TreePhase.GROW and len(mod.nodes) < 40
 
 
 @pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
