@@ -7,6 +7,10 @@
 | News | Need | available | RSS/Atom feeds |
 | Maze (idle animation) | Need | available | none |
 | Qix (idle animation) | Need | available | none |
+| Starfield, Pipes (3D idle animations) | Need | available | none |
+| Game of Life, Lava lamp, TV static (idle animations) | Need | available | none |
+| Snake, Growing tree (idle animations) | Need | available | none |
+| Skyline (day/night idle animation) | Need | available | sun times for your location |
 | Sports scores | Want | planned | MLB Stats API, then NFL/NHL/NBA |
 | Transit | Want | planned | Metro Transit NexTrip (Minneapolis/St. Paul), then GTFS-RT |
 | Calendar | Want | planned | ICS URL |
@@ -65,9 +69,36 @@ A bundle of lines whose two endpoints drift and bounce around the panel, leaving
 as in the 1981 arcade game. Choose `rainbow`, `single` or `duo` colors, trail length, speed and up
 to three independent qixes.
 
+## More idle animations
+
+- **Starfield**: fly through a 3D field of stars; nearer stars are brighter and streak, and a
+  shooting star crosses now and then. `stars`, `speed`, `trails`, `color_mode`.
+- **Pipes**: the 3D screensaver. Shaded square tubes with ball joints grow through a voxel grid
+  with random turns, each pipe in its own color, until the round's pipes are done; then it fades
+  and starts over. `grid`, `pipes`, `speed`, `turn_chance`, `palette`.
+- **Game of Life**: Conway's rules on a wrapping board (or hard edges). Newborn cells flash white
+  and settle into the color; dying cells leave a fading ghost. A stalled or empty soup fades out
+  and reseeds. `cell_px`, `generations_per_second`, `density`, `color_mode`.
+- **Lava lamp**: slow metaball blobs that rise, sink and merge; `classic`, `ocean`, `toxic`,
+  `sunset` palettes or your own three colors.
+- **TV static**: analog snow with a rolling bar and scanlines; every few seconds the set flips to a
+  channel (color bars, a test card, NO SIGNAL, PLEASE STAND BY) and tears back to snow.
+- **Snake**: plays itself with a shortest-path search to the food, refusing moves that would cut
+  it off from its own tail, and chasing the tail when there is no safe route. When it finally traps
+  itself it flashes and restarts.
+- **Growing tree**: a space-colonization tree grows branch by branch into a random canopy shape,
+  leafs out, turns autumn colors, sheds its leaves to the ground and starts again as a sapling.
+- **Skyline**: a generated city under a sky that follows the sun (same palette and solar math as
+  the weather module, for your location). The sun and moon arc across, stars twinkle after dusk,
+  windows light up in the evening and go dark toward morning, cars pass on the street. `timelapse`
+  runs a whole day during the turn starting from now; `realtime` matches the real sky.
+
+All of them are seeded so their goldens are reproducible, and all render in well under a
+millisecond per frame on the Mac (the 3D ones draw incrementally into a depth buffer).
+
 ## Idle module
 
-Both animations always have something to show, so they work well as the **idle module**:
+The animations always have something to show, so they work well as the **idle module**:
 set `rotation.idle_module` to an instance id (for example `maze`) and it is shown whenever every
 other module declines to display (no data yet, nothing scheduled). The idle module is skipped in
 the normal rotation. Or just leave them in the rotation as regular turns.
