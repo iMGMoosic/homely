@@ -183,3 +183,18 @@ def test_geocode_proxies_and_caches(client: TestClient, rt: Runtime):
     r2 = client.get("/api/geocode?q=minneapolis&count=3")
     assert r2.status_code == 200 and calls["n"] == 1  # served from cache
     assert client.get("/api/geocode?q=a").status_code == 422
+
+
+def test_logs_endpoint_returns_recent_lines(client: TestClient):
+    import logging
+
+    from homely.system import logbuffer
+
+    logbuffer.install()
+    logging.getLogger("homely.test").warning("hello from the test %s", 42)
+    logging.getLogger("homely.test").debug("too quiet")
+    r = client.get("/api/logs?limit=50&level=INFO")
+    assert r.status_code == 200
+    msgs = [ln["message"] for ln in r.json()]
+    assert "hello from the test 42" in msgs and "too quiet" not in msgs
+    assert client.get("/api/logs?level=LOUD").status_code == 422

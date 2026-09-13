@@ -4,6 +4,7 @@
   import { navigate } from '../../router.svelte';
   import { setEnabled, setDuration, move } from '../../stores/rotation.svelte';
   import { toast } from '../ui/toast.svelte';
+  import { dragHandle } from 'svelte-dnd-action';
 
   let { item, first, last }: { item: RotationItem; first: boolean; last: boolean } = $props();
 
@@ -23,6 +24,7 @@
 
 <div class="card mod" class:disabled={!item.enabled}>
   <div class="row">
+    <div class="grip" use:dragHandle aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</div>
     <div class="order">
       <button
         class="btn sm icon"
@@ -94,6 +96,18 @@
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
+  }
+  .grip {
+    cursor: grab;
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    letter-spacing: -0.15em;
+    padding: 0.2rem 0.1rem;
+    user-select: none;
+    touch-action: none;
+  }
+  .grip:active {
+    cursor: grabbing;
   }
   .title {
     background: none;

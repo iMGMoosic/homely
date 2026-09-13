@@ -104,3 +104,10 @@ export interface GeocodeResult {
   timezone: string | null;
   label: string;
 }
+
+export interface LogLine {
+  ts: string;
+  level: 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR';
+  logger: string;
+  message: string;
+}

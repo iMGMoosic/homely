@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from homely import __version__
 from homely.web import schemas
@@ -26,6 +26,17 @@ async def system(rt: Rt) -> schemas.SystemInfo:
 @router.get("/state", response_model=schemas.StateInfo, dependencies=[Depends(require_auth)])
 async def state(rt: Rt) -> schemas.StateInfo:
     return rt.state()
+
+
+@router.get("/logs", response_model=list[schemas.LogLine], dependencies=[Depends(require_auth)])
+async def logs(
+    limit: int = Query(200, ge=1, le=500),
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Query("INFO"),
+) -> list[schemas.LogLine]:
+    from homely.system import logbuffer
+
+    handler = logbuffer.install()
+    return [schemas.LogLine(**ln) for ln in handler.tail(limit, level)]
 
 
 @router.post("/system/actions/{action}", response_model=schemas.ActionResult, dependencies=[Depends(require_auth)])

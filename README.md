@@ -4,8 +4,9 @@ A Tidbyt-like LED matrix display for Raspberry Pi. Plug a HUB75 RGB LED panel in
 with an Adafruit RGB Matrix Bonnet, run one install command, and configure everything from
 your phone: clock, weather, news, transit times, sports scores, idle animations and more.
 
-> **Status: early development.** Milestone 1 (core runtime, Clock module, web UI, installer) is
-> complete. Weather, news and the idle animations are next. See [docs/modules.md](docs/modules.md).
+> **Status: early development.** The core runtime, web UI, installer and the Clock, Weather and
+> News modules work. Idle animations, sports, transit and calendar are next. See
+> [docs/modules.md](docs/modules.md).
 
 ## How it works
 
@@ -40,9 +41,9 @@ The installer builds the LED driver, installs homely as a systemd service, disab
 
 | Module | Status |
 |---|---|
-| Clock | available |
-| Weather (Open-Meteo, no API key) | planned |
-| News (RSS/Atom) | planned |
+| Clock (seven-segment LCD look or pixel font) | available |
+| Weather (Open-Meteo, no API key; temperature gradient, sky strip, friendly icons) | available |
+| News (RSS/Atom feeds) | available |
 | Idle animations: maze builder/solver, Qix | planned |
 | Sports scores (MLB, NFL, NHL, NBA) | planned |
 | Transit (Metro Transit MSP, then GTFS-RT) | planned |

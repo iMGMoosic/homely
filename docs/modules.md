@@ -3,8 +3,8 @@
 | Module | Tier | Status | Data source |
 |---|---|---|---|
 | Clock | Need | available | local time |
-| Weather | Need | planned | Open-Meteo (no key), pluggable providers |
-| News | Need | planned | RSS/Atom feeds |
+| Weather | Need | available | Open-Meteo (no key), pluggable providers |
+| News | Need | available | RSS/Atom feeds |
 | Maze (idle animation) | Need | planned | none |
 | Qix (idle animation) | Need | planned | none |
 | Sports scores | Want | planned | MLB Stats API, then NFL/NHL/NBA |
@@ -15,3 +15,38 @@
 | Spotify | Looks cool | planned | Spotify Web API (your own client id) |
 
 Want to write one? See [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Clock
+
+Seven-segment LCD-style digits by default (`style: segment`) with optional faint "unlit" segments,
+or a pixel font (`style: pixel`). 12/24 hour, seconds, blinking colon, date formats, per-element
+colors, and a timezone override. Layouts for every supported size.
+
+## Weather
+
+Data from [Open-Meteo](https://open-meteo.com) (free, no API key, non-commercial use, data
+CC BY 4.0). Set your location under **Display → Location**; the "Find a place" search fills in
+latitude, longitude, name and timezone.
+
+- **Icons** are drawn procedurally in a bold, friendly style (sun, moon, clouds, rain, snow, storm,
+  fog, hail) so they stay crisp at any panel size.
+- **Background gradient**: the top of the panel is colored by today's high temperature and the
+  bottom by today's low (purple/blue = cold, yellow/orange/red = hot). `background_brightness`
+  keeps it subtle behind the text.
+- **Sky strip**: a two-pixel strip on the right edge shows the sky color over the whole day (dark
+  blue → yellow at sunrise → sky blue → yellow at sunset → dark blue) with a white marker at the
+  current time. It uses the real sunrise/sunset for your location.
+- **Views**: `both` shows current conditions for the first half of the turn, then the daily
+  forecast (with hourly rain-chance bars where there is room). Or pick one.
+- Metric or imperial follows the global location units. The last forecast is cached on disk so a
+  reboot shows weather immediately.
+
+Provider interface: `homely.modules.weather.providers.WeatherProvider`. Add a provider by
+implementing `fetch(lat, lon, units, timezone) -> Forecast` and registering it in `PROVIDERS`.
+
+## News
+
+Headlines from any RSS or Atom feeds (defaults: BBC World, NPR, Hacker News). Each turn shows a
+few headlines (`headlines_per_slot`, `seconds_per_headline`), wrapped to fit, with the source name
+in its color and the item age. Feeds are fetched with conditional requests (ETag/Last-Modified),
+one bad feed never blocks the others, and `mix: interleave` takes turns between sources.

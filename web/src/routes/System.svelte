@@ -1,12 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '../api/client';
-  import type { SystemInfo } from '../api/types';
+  import type { LogLine, SystemInfo } from '../api/types';
   import { status } from '../stores/status.svelte';
   import { toast } from '../lib/ui/toast.svelte';
 
   let info = $state<SystemInfo | null>(null);
   let busy = $state<string | null>(null);
+  let logs = $state<LogLine[]>([]);
+  let logLevel = $state<'DEBUG' | 'INFO' | 'WARNING' | 'ERROR'>('INFO');
+  let logsOpen = $state(false);
+  let logBox: HTMLPreElement | undefined = $state();
+
+  async function loadLogs() {
+    if (!logsOpen) return;
+    try {
+      logs = await api.logs(logLevel, 200);
+      requestAnimationFrame(() => logBox && (logBox.scrollTop = logBox.scrollHeight));
+    } catch {
+      /* transient */
+    }
+  }
 
   async function load() {
     try {
@@ -40,7 +54,11 @@
   onMount(() => {
     load();
     const t = setInterval(load, 10000);
-    return () => clearInterval(t);
+    const l = setInterval(loadLogs, 4000);
+    return () => {
+      clearInterval(t);
+      clearInterval(l);
+    };
   });
 </script>
 
@@ -119,9 +137,54 @@
       >
     </div>
     <p class="muted small">
-      Logs: <span class="mono">journalctl -u homely -f</span> · API docs: <a href="/docs">/docs</a>
+      Full logs: <span class="mono">journalctl -u homely -f</span> · API docs:
+      <a href="/docs">/docs</a>
     </p>
   </div>
+  <details class="card" bind:open={logsOpen} ontoggle={loadLogs}>
+    <summary
+      ><strong>Recent logs</strong>
+      <span class="muted small">last 200 lines, refreshes every few seconds</span></summary
+    >
+    <div class="row" style="margin:0.6rem 0;gap:0.5rem;align-items:center">
+      <label class="small" for="log-level">Level</label>
+      <select id="log-level" bind:value={logLevel} onchange={loadLogs}>
+        <option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option>
+      </select>
+      <button class="btn sm" onclick={loadLogs}>Refresh</button>
+    </div>
+    <pre class="logs mono small" bind:this={logBox}>{#each logs as ln (ln.ts + ln.message)}<span
+          class={'lvl ' + ln.level}>{ln.ts.slice(11, 19)} {ln.level.padEnd(7)}</span
+        > {ln.logger}: {ln.message}
+      {/each}{#if !logs.length}nothing logged at this level yet{/if}</pre>
+  </details>
 {:else}
   <p class="muted"><span class="spin"></span> Loading…</p>
 {/if}
+
+<style>
+  .logs {
+    max-height: 22rem;
+    overflow: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+  }
+  .lvl {
+    color: var(--text-dim);
+  }
+  .lvl.WARNING {
+    color: var(--warn, #e0a030);
+  }
+  .lvl.ERROR {
+    color: var(--danger);
+  }
+  summary {
+    cursor: pointer;
+    list-style: none;
+  }
+</style>

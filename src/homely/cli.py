@@ -24,6 +24,9 @@ def _setup_logging(level: str) -> None:
         stream=sys.stderr,
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    from homely.system import logbuffer
+
+    logbuffer.install()
 
 
 @click.group(help="homely: a Tidbyt-like LED matrix display for Raspberry Pi.")
@@ -377,6 +380,48 @@ def doctor(config_path: str | None, state_dir: str | None) -> None:
     )
     line(True, f"addresses: {', '.join(info.ip_addresses()) or 'none found'}")
     sys.exit(0 if ok else 1)
+
+
+@main.command()
+@click.option("--version", "target", default=None, help="Install this exact version (default: latest release)")
+@click.option("--from-pypi", is_flag=True, help="Install from PyPI instead of the GitHub release wheel")
+@click.option("--no-restart", is_flag=True, help="Do not restart the systemd service afterwards")
+def upgrade(target: str | None, from_pypi: bool, no_restart: bool) -> None:
+    """Upgrade homely in this virtualenv, then restart the service."""
+    import json
+    import shutil
+    import subprocess
+    import urllib.request
+
+    repo = "imgmoosic/homely"
+    if from_pypi:
+        spec = f"homely-display=={target}" if target else "homely-display"
+    else:
+        url = f"https://api.github.com/repos/{repo}/releases/{'tags/v' + target if target else 'latest'}"
+        try:
+            with urllib.request.urlopen(url, timeout=20) as resp:
+                release = json.load(resp)
+        except Exception as exc:
+            raise click.ClickException(f"could not query GitHub releases: {exc}") from exc
+        wheels = [a["browser_download_url"] for a in release.get("assets", []) if a["name"].endswith(".whl")]
+        if not wheels:
+            raise click.ClickException(f"release {release.get('tag_name')} has no wheel asset")
+        spec = wheels[0]
+        click.echo(f"installing {release.get('tag_name')} from {spec}")
+    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", spec]
+    if subprocess.run([sys.executable, "-m", "pip", "--version"], capture_output=True).returncode != 0:
+        uv = shutil.which("uv")
+        if not uv:
+            raise click.ClickException("neither pip nor uv is available in this environment")
+        cmd = [uv, "pip", "install", "--python", sys.executable, "--upgrade", spec]
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        raise click.ClickException("install failed")
+    if not no_restart and shutil.which("systemctl") and os.geteuid() == 0:
+        subprocess.run(["systemctl", "restart", "homely"], check=False)
+        click.echo("homely restarted")
+    else:
+        click.echo("installed; restart homely to use the new version")
 
 
 @main.command()

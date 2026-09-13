@@ -5,9 +5,37 @@
   import { status } from '../stores/status.svelte';
   import { toast } from '../lib/ui/toast.svelte';
   import { navigate } from '../router.svelte';
+  import { dragHandleZone } from 'svelte-dnd-action';
+  import { api } from '../api/client';
+  import type { RotationItem } from '../api/types';
 
   let adding = $state(false);
   let lastSeen = 0;
+  // svelte-dnd-action wants an `id` on each item; wrap the rotation items.
+  let dragItems = $state<Array<{ id: string; item: RotationItem }>>([]);
+  let dragging = false;
+
+  $effect(() => {
+    if (!dragging) dragItems = rotation.items.map((item) => ({ id: item.instance_id, item }));
+  });
+
+  function consider(e: CustomEvent<{ items: Array<{ id: string; item: RotationItem }> }>) {
+    dragging = true;
+    dragItems = e.detail.items;
+  }
+
+  async function finalize(e: CustomEvent<{ items: Array<{ id: string; item: RotationItem }> }>) {
+    dragItems = e.detail.items;
+    dragging = false;
+    const order = dragItems.map((d) => d.id);
+    if (order.join() === rotation.items.map((i) => i.instance_id).join()) return;
+    try {
+      rotation.items = await api.reorder(order);
+    } catch (err: any) {
+      toast(err.message, 'bad');
+      dragItems = rotation.items.map((item) => ({ id: item.instance_id, item }));
+    }
+  }
 
   const addable = $derived(
     rotation.catalog.filter(
@@ -43,7 +71,8 @@
   >
 </div>
 <p class="muted small" style="margin-bottom:1rem">
-  Modules take turns on the display in this order. Toggle to enable, tap to configure.
+  Modules take turns on the display in this order. Drag the grip (or use the arrows) to reorder,
+  toggle to enable, tap to configure.
 </p>
 
 {#if adding}
@@ -77,6 +106,14 @@
   <div class="card"><p class="muted">No modules yet. Add one above.</p></div>
 {/if}
 
-{#each rotation.items as item, i (item.instance_id)}
-  <ModuleCard {item} first={i === 0} last={i === rotation.items.length - 1} />
-{/each}
+<div
+  use:dragHandleZone={{ items: dragItems, flipDurationMs: 150, dropTargetStyle: {} }}
+  onconsider={consider}
+  onfinalize={finalize}
+>
+  {#each dragItems as d, i (d.id)}
+    <div>
+      <ModuleCard item={d.item} first={i === 0} last={i === dragItems.length - 1} />
+    </div>
+  {/each}
+</div>

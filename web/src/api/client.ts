@@ -2,6 +2,7 @@ import type {
   ActionResult,
   ApiErrors,
   GeocodeResult,
+  LogLine,
   HardwarePayload,
   ModuleCatalogEntry,
   RotationItem,
@@ -74,6 +75,8 @@ export const api = {
   system: () => request<SystemInfo>('GET', '/api/system'),
   state: () => request<StateInfo>('GET', '/api/state'),
   action: (name: string) => request<ActionResult>('POST', `/api/system/actions/${name}`),
+  logs: (level: string, limit = 200) =>
+    request<LogLine[]>('GET', `/api/logs?level=${level}&limit=${limit}`),
   geocode: (q: string) =>
     request<GeocodeResult[]>('GET', `/api/geocode?q=${encodeURIComponent(q)}`),
 };

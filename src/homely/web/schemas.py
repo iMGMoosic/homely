@@ -148,3 +148,10 @@ class GeocodeResult(BaseModel):
     longitude: float
     timezone: str | None = None
     label: str
+
+
+class LogLine(BaseModel):
+    ts: str
+    level: str
+    logger: str
+    message: str
