@@ -1,12 +1,11 @@
-"""Maze: builds a maze with a recursive backtracker, then a little solver walks it.
-
-The animation is a state machine advanced by ``frame.dt``:
-BUILD (carve cells) -> SOLVE (depth-first walker with backtracking) -> SHOW (path lit) -> FADE -> new maze.
-"""
+"""Maze: a thin-walled maze of random size is drawn wall pixel by wall pixel, then the
+shortest path from the left-edge entrance to the right-edge exit is traced through the cell
+centers, one pixel at a time. Hold, clear, repeat. (After Leah's maze_board prototype.)"""
 
 from __future__ import annotations
 
 import random
+from collections import deque
 from enum import Enum
 
 from PIL import Image
@@ -14,30 +13,96 @@ from PIL import Image
 from homely.core.module import FrameInfo, Module, ModuleContext, ModuleInfo, Tier
 from homely.modules.maze.settings import MazeSettings
 from homely.render.canvas import Canvas
-from homely.render.color import Color, dim, hsv, lerp, parse_color
+from homely.render.color import parse_color
 from homely.render.layout import layout_fallback
 from homely.render.size import Size
 
-Cell = tuple[int, int]
-DIRS: tuple[Cell, ...] = ((1, 0), (-1, 0), (0, 1), (0, -1))
-FADE_S = 1.0
+Cell = tuple[int, int]  # (row, col)
 
 
 class Phase(Enum):
-    BUILD = "build"
-    SOLVE = "solve"
-    SHOW = "show"
-    FADE = "fade"
+    WALLS = "walls"
+    PATH = "path"
+    HOLD = "hold"
+
+
+class Grid:
+    """Cells with right/bottom walls; entrance on the left edge, exit on the right edge."""
+
+    def __init__(self, rows: int, cols: int, rng: random.Random) -> None:
+        self.rows, self.cols = rows, cols
+        self.right = [[True] * cols for _ in range(rows)]
+        self.bottom = [[True] * cols for _ in range(rows)]
+        self.start_row = rng.randrange(rows)
+        self.end_row = rng.randrange(rows)
+        self.right[self.end_row][cols - 1] = False  # exit
+        self._carve(rng)
+
+    def _carve(self, rng: random.Random) -> None:
+        visited = [[False] * self.cols for _ in range(self.rows)]
+        stack: list[Cell] = [(self.start_row, 0)]
+        visited[self.start_row][0] = True
+        while stack:
+            r, c = stack[-1]
+            moves = [(r - 1, c), (r, c + 1), (r + 1, c), (r, c - 1)]
+            rng.shuffle(moves)
+            for nr, nc in moves:
+                if 0 <= nr < self.rows and 0 <= nc < self.cols and not visited[nr][nc]:
+                    visited[nr][nc] = True
+                    if nr < r:
+                        self.bottom[nr][nc] = False
+                    elif nc > c:
+                        self.right[r][c] = False
+                    elif nr > r:
+                        self.bottom[r][c] = False
+                    else:
+                        self.right[nr][nc] = False
+                    stack.append((nr, nc))
+                    break
+            else:
+                stack.pop()
+
+    def open_between(self, a: Cell, b: Cell) -> bool:
+        (r1, c1), (r2, c2) = a, b
+        if r1 == r2:
+            return not self.right[r1][min(c1, c2)]
+        return not self.bottom[min(r1, r2)][c1]
+
+    def shortest_path(self) -> list[Cell]:
+        start, goal = (self.start_row, 0), (self.end_row, self.cols - 1)
+        parent: dict[Cell, Cell] = {}
+        seen = {start}
+        q: deque[Cell] = deque([start])
+        while q:
+            cur = q.popleft()
+            if cur == goal:
+                break
+            r, c = cur
+            for nxt in ((r, c + 1), (r + 1, c), (r, c - 1), (r - 1, c)):
+                if (
+                    0 <= nxt[0] < self.rows
+                    and 0 <= nxt[1] < self.cols
+                    and nxt not in seen
+                    and self.open_between(cur, nxt)
+                ):
+                    seen.add(nxt)
+                    parent[nxt] = cur
+                    q.append(nxt)
+        path = [goal]
+        while path[-1] != start:
+            path.append(parent[path[-1]])
+        path.reverse()
+        return path
 
 
 class MazeModule(Module[MazeSettings]):
     info = ModuleInfo(
         id="maze",
         name="Maze",
-        description="Idle animation: a maze grows, then a solver finds its way through.",
+        description="Idle animation: a maze is drawn wall by wall, then its solution is traced.",
         tier=Tier.NEED,
         icon="maze",
-        default_duration_s=90,
+        default_duration_s=120,
         default_fps=30,
         min_size=Size(16, 16),
     )
@@ -46,200 +111,103 @@ class MazeModule(Module[MazeSettings]):
     def __init__(self, ctx: ModuleContext, settings: MazeSettings, *, seed: int | None = None) -> None:
         super().__init__(ctx, settings)
         self.rng = random.Random(seed)
-        self._phase = Phase.BUILD
-        self._img: Image.Image | None = None  # walls + corridors, drawn incrementally
+        self._img: Image.Image | None = None
         self._reset(ctx.size)
 
-    # ---- geometry -------------------------------------------------------------------------
+    # ---- one round ----------------------------------------------------------------------
 
     def _reset(self, size: Size) -> None:
-        cw = self.settings.corridor
-        self.pitch = cw + 1
-        self.cols = max(2, (size.w - 1) // self.pitch)
-        self.rows = max(2, (size.h - 1) // self.pitch)
-        grid_w = self.cols * self.pitch + 1
-        grid_h = self.rows * self.pitch + 1
-        self.ox = (size.w - grid_w) // 2
-        self.oy = (size.h - grid_h) // 2
-        self._img = Image.new("RGB", (size.w, size.h), (0, 0, 0))
-        self._canvas = Canvas(size, image=self._img)
-        # Fill the grid area with walls; carving removes them.
-        self._canvas.rect(self.ox, self.oy, grid_w, grid_h, fill=self._wall_color(0.0))
-        self.visited: set[Cell] = set()
-        self.open: set[tuple[Cell, Cell]] = set()  # carved passages (a, b) both orders
-        self.stack: list[Cell] = [(0, 0)]
-        self.visited.add((0, 0))
-        self._carve_cell((0, 0), 0.0)
-        self.total = self.cols * self.rows
+        w, h = size.w, size.h
+        s = self.settings
+        max_cols = max(s.min_cells, w // s.min_cell_px)
+        max_rows = max(s.min_cells, h // s.min_cell_px)
+        cols = self.rng.randint(s.min_cells, max_cols)
+        rows = self.rng.randint(s.min_cells, max_rows)
+        self.grid = Grid(rows, cols, self.rng)
+        self.cell_w, self.cell_h = w // cols, h // rows
+        self.ox = (w - cols * self.cell_w) // 2
+        self.oy = (h - rows * self.cell_h) // 2
+        self._img = Image.new("RGB", (w, h), (0, 0, 0))
+        self.wall_pixels = self._wall_pixels()
+        self.path_pixels = self._path_pixels(self.grid.shortest_path())
+        self._drawn = 0
         self._acc = 0.0
-        self._phase = Phase.BUILD
-        self.start: Cell = (0, 0)
-        self.goal: Cell = (self.cols - 1, self.rows - 1)
-        self.path: list[Cell] = []
-        self.dead: set[Cell] = set()
-        self.solved = False
+        self._phase = Phase.WALLS
         self._timer = 0.0
 
-    def _wall_color(self, progress: float) -> Color:
-        if self.settings.rainbow_walls:
-            return dim(hsv(progress * 0.8), 0.8)
-        return parse_color(self.settings.wall_color)
+    def _wall_pixels(self) -> list[tuple[int, int]]:
+        g, cw, ch = self.grid, self.cell_w, self.cell_h
+        px: list[tuple[int, int]] = []
+        px.extend((x, self.oy) for x in range(self.ox, self.ox + g.cols * cw))  # top border
+        for r in range(g.rows):
+            for c in range(g.cols):
+                x, y = self.ox + c * cw, self.oy + r * ch
+                if c == 0 and r != g.start_row:
+                    px.extend((self.ox, yy) for yy in range(y, y + ch))
+                if g.bottom[r][c]:
+                    px.extend((xx, y + ch - 1) for xx in range(x, x + cw))
+                if g.right[r][c]:
+                    px.extend((x + cw - 1, yy) for yy in range(y, y + ch))
+        return px
 
-    def _cell_px(self, cell: Cell) -> tuple[int, int]:
-        return self.ox + 1 + cell[0] * self.pitch, self.oy + 1 + cell[1] * self.pitch
+    def _center(self, cell: Cell) -> tuple[int, int]:
+        r, c = cell
+        return self.ox + c * self.cell_w + self.cell_w // 2, self.oy + r * self.cell_h + self.cell_h // 2
 
-    def _carve_cell(self, cell: Cell, progress: float) -> None:
-        x, y = self._cell_px(cell)
-        cw = self.settings.corridor
-        self._canvas.rect(x, y, cw, cw, fill=(0, 0, 0))
-        if self.settings.rainbow_walls:
-            # tint the walls around a freshly carved cell so the rainbow reflects build order
-            col = self._wall_color(progress)
-            for dx, dy in DIRS:
-                nx, ny = cell[0] + dx, cell[1] + dy
-                wx, wy = self._wall_px(cell, (nx, ny))
-                if (cell, (nx, ny)) not in self.open:
-                    self._canvas.rect(wx, wy, cw if dx == 0 else 1, cw if dy == 0 else 1, fill=col)
+    def _path_pixels(self, path: list[Cell]) -> list[tuple[int, int]]:
+        px: list[tuple[int, int]] = []
+        # lead in from the left edge and out through the right edge like the prototype's open walls
+        sx, sy = self._center(path[0])
+        px.extend((x, sy) for x in range(self.ox, sx))
+        for a, b in zip(path, path[1:], strict=False):
+            (x1, y1), (x2, y2) = self._center(a), self._center(b)
+            dx, dy = x2 - x1, y2 - y1
+            dist = max(abs(dx), abs(dy))
+            for step in range(dist + 1):
+                px.append((int(x1 + dx * step / dist), int(y1 + dy * step / dist)))
+        ex, ey = self._center(path[-1])
+        px.extend((x, ey) for x in range(ex, self.ox + self.grid.cols * self.cell_w))
+        return px
 
-    def _wall_px(self, a: Cell, b: Cell) -> tuple[int, int]:
-        """Top-left pixel of the wall segment between adjacent cells a and b."""
-        ax, ay = self._cell_px(a)
-        cw = self.settings.corridor
-        dx, dy = b[0] - a[0], b[1] - a[1]
-        if dx == 1:
-            return ax + cw, ay
-        if dx == -1:
-            return ax - 1, ay
-        if dy == 1:
-            return ax, ay + cw
-        return ax, ay - 1
-
-    def _carve_between(self, a: Cell, b: Cell) -> None:
-        cw = self.settings.corridor
-        wx, wy = self._wall_px(a, b)
-        horizontal = a[1] == b[1]
-        self._canvas.rect(wx, wy, 1 if horizontal else cw, cw if horizontal else 1, fill=(0, 0, 0))
-        self.open.add((a, b))
-        self.open.add((b, a))
-
-    def _neighbors(self, cell: Cell) -> list[Cell]:
-        out = []
-        for dx, dy in DIRS:
-            n = (cell[0] + dx, cell[1] + dy)
-            if 0 <= n[0] < self.cols and 0 <= n[1] < self.rows:
-                out.append(n)
-        return out
-
-    # ---- simulation --------------------------------------------------------------------------
-
-    def _build_steps(self, n: int) -> None:
-        for _ in range(n):
-            if not self.stack:
-                self._phase = Phase.SOLVE
-                self.path = [self.start]
-                self.dead = set()
-                return
-            cur = self.stack[-1]
-            options = [c for c in self._neighbors(cur) if c not in self.visited]
-            if not options:
-                self.stack.pop()
-                continue
-            nxt = self.rng.choice(options)
-            self.visited.add(nxt)
-            self._carve_between(cur, nxt)
-            self._carve_cell(nxt, len(self.visited) / self.total)
-            self.stack.append(nxt)
-
-    def _solve_steps(self, n: int) -> None:
-        for _ in range(n):
-            if not self.path:
-                self._phase = Phase.SHOW
-                return
-            cur = self.path[-1]
-            if cur == self.goal:
-                self.solved = True
-                self._phase = Phase.SHOW
-                self._timer = 0.0
-                return
-            options = [
-                c
-                for c in self._neighbors(cur)
-                if (cur, c) in self.open and c not in self.dead and (len(self.path) < 2 or c != self.path[-2])
-            ]
-            options = [c for c in options if c not in self.path]
-            if options:
-                # prefer moving toward the goal a little, but stay random enough to be fun
-                options.sort(key=lambda c: abs(c[0] - self.goal[0]) + abs(c[1] - self.goal[1]) + self.rng.random() * 3)
-                self.path.append(options[0])
-            else:
-                self.dead.add(self.path.pop())
+    # ---- animation -------------------------------------------------------------------------
 
     def advance(self, dt: float) -> None:
-        if self._phase is Phase.BUILD:
-            self._acc += dt * self.settings.build_speed
+        assert self._img is not None
+        if self._phase is Phase.WALLS:
+            self._acc += dt * self.settings.draw_speed
             n = int(self._acc)
             self._acc -= n
-            self._build_steps(n)
-        elif self._phase is Phase.SOLVE:
+            color = parse_color(self.settings.wall_color)
+            end = min(len(self.wall_pixels), self._drawn + n)
+            for x, y in self.wall_pixels[self._drawn : end]:
+                self._img.putpixel((x, y), color)
+            self._drawn = end
+            if self._drawn >= len(self.wall_pixels):
+                self._phase, self._drawn, self._acc = Phase.PATH, 0, 0.0
+        elif self._phase is Phase.PATH:
             self._acc += dt * self.settings.solve_speed
             n = int(self._acc)
             self._acc -= n
-            self._solve_steps(n)
-        elif self._phase is Phase.SHOW:
+            color = parse_color(self.settings.path_color)
+            end = min(len(self.path_pixels), self._drawn + n)
+            for x, y in self.path_pixels[self._drawn : end]:
+                self._img.putpixel((x, y), color)
+            self._drawn = end
+            if self._drawn >= len(self.path_pixels):
+                self._phase, self._timer = Phase.HOLD, 0.0
+        else:
             self._timer += dt
             if self._timer >= self.settings.pause_s:
-                self._phase = Phase.FADE
-                self._timer = 0.0
-        elif self._phase is Phase.FADE:
-            self._timer += dt
-            if self._timer >= FADE_S:
                 self._reset(self.ctx.size)
-
-    # ---- render ----------------------------------------------------------------------------
 
     async def on_settings_changed(self, settings: MazeSettings) -> None:
         self.settings = settings
         self._reset(self.ctx.size)
 
-    def on_enter(self) -> None:
-        if self._phase is Phase.FADE:
-            self._reset(self.ctx.size)
-
     @layout_fallback
     def render_any(self, c: Canvas, frame: FrameInfo) -> None:
-        if c.size != self.ctx.size or self._img is None:
+        if self._img is None or self._img.size != c.size.as_tuple():
             self._reset(c.size)
         self.advance(min(frame.dt, 0.25))
         assert self._img is not None
         c.blit(self._img, 0, 0)
-        cw = self.settings.corridor
-        trail = parse_color(self.settings.trail_color)
-        explore = parse_color(self.settings.explore_color)
-        path_col = parse_color(self.settings.path_color)
-        fade = 1.0
-        if self._phase is Phase.FADE:
-            fade = max(0.0, 1.0 - self._timer / FADE_S)
-        # start and goal markers
-        for cell, col in ((self.start, dim(path_col, 0.6)), (self.goal, (255, 60, 60))):
-            x, y = self._cell_px(cell)
-            c.rect(x, y, cw, cw, fill=col)
-        if self._phase in (Phase.SOLVE, Phase.SHOW, Phase.FADE):
-            for cell in self.dead:
-                x, y = self._cell_px(cell)
-                c.rect(x, y, cw, cw, fill=dim(explore, fade))
-            col = path_col if self.solved else trail
-            for i, cell in enumerate(self.path):
-                x, y = self._cell_px(cell)
-                c.rect(x, y, cw, cw, fill=dim(col, fade))
-                if i:
-                    # fill the passage between consecutive path cells so the trail is continuous
-                    prev = self.path[i - 1]
-                    wx, wy = self._wall_px(prev, cell)
-                    horizontal = prev[1] == cell[1]
-                    c.rect(wx, wy, 1 if horizontal else cw, cw if horizontal else 1, fill=dim(col, fade))
-            if self.path and not self.solved:
-                hx, hy = self._cell_px(self.path[-1])
-                c.rect(hx, hy, cw, cw, fill=lerp(trail, (255, 255, 255), 0.6))
-        if self._phase is Phase.FADE and fade < 1.0:
-            # dim everything uniformly for the fade-out
-            c.image.paste(c.image.point(lambda v: int(v * fade)))

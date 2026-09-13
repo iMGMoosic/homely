@@ -182,11 +182,12 @@ class Canvas:
         *,
         halign: HAlign = "left",
         valign: VAlign = "top",
+        outline: Color | None = None,
     ) -> int:
         """Draw text with (x, y) as the anchor per halign/valign. Returns the text width.
 
         valign="top" means y is the top of the font's line box (ascent + descent);
-        "baseline" means y is the baseline row.
+        "baseline" means y is the baseline row. ``outline`` draws a 1 px halo first.
         """
         width = font.measure(s)
         if halign == "center":
@@ -210,6 +211,9 @@ class Canvas:
             if g.width and g.height:
                 gx = cx + g.x_off
                 gy = baseline - g.y_off - g.height
+                if outline is not None:
+                    for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)):
+                        self._paste_mask(g.mask, gx + dx, gy + dy, outline)
                 self._paste_mask(g.mask, gx, gy, color)
             cx += g.advance
         return width

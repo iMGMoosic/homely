@@ -17,8 +17,8 @@ class WeatherSettings(ModuleSettings):
     refresh_minutes: int = Field(
         15, ge=5, le=180, title="Refresh every (minutes)", json_schema_extra={"x-group": "Data", "x-order": 20}
     )
-    view: Literal["both", "current", "forecast"] = Field(
-        "both",
+    view: Literal["current", "both", "forecast"] = Field(
+        "current",
         title="View",
         description="both = current conditions for the first half, then the daily forecast",
         json_schema_extra={"x-group": "Layout", "x-order": 10},
@@ -33,7 +33,7 @@ class WeatherSettings(ModuleSettings):
         False, title="Show feels-like temperature", json_schema_extra={"x-group": "Layout", "x-order": 40}
     )
     show_place: bool = Field(
-        True,
+        False,
         title="Show place name",
         description="Uses the name from the global location settings",
         json_schema_extra={"x-group": "Layout", "x-order": 50},
@@ -51,17 +51,23 @@ class WeatherSettings(ModuleSettings):
         json_schema_extra={"x-group": "Look", "x-order": 10},
     )
     background_brightness: int = Field(
-        35,
+        100,
         ge=5,
         le=100,
         title="Background brightness (%)",
         json_schema_extra={"x-group": "Look", "x-order": 20, "x-widget": "slider"},
     )
-    sky_strip: bool = Field(
+    sky_half: bool = Field(
         True,
-        title="Sky strip",
-        description="A strip on the right edge showing the sky color over the day, with a marker at now",
+        title="Sky-colored half",
+        description="The icon half of the screen takes the color of the sky right now (night, dawn, day, dusk)",
         json_schema_extra={"x-group": "Look", "x-order": 30},
+    )
+    outline_temperature: bool = Field(
+        True,
+        title="Outline the temperature",
+        description="White halo around the temperature so it reads on any background",
+        json_schema_extra={"x-group": "Look", "x-order": 35},
     )
     text_color: str = Field(
         "#FFFFFF",

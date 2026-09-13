@@ -10,11 +10,12 @@ import httpx
 import pytest
 
 from homely.core.module import FrameInfo
-from homely.modules.weather.colors import DAWN_SKY, DAY_SKY, NIGHT_SKY, sky_color, temp_color
+from homely.modules.weather.colors import NIGHT, NOON, SUNRISE, sky_gradient, temp_color
 from homely.modules.weather.module import WeatherModule
 from homely.modules.weather.providers import Forecast, OpenMeteoProvider
 from homely.modules.weather.providers.open_meteo import parse_forecast
 from homely.modules.weather.settings import WeatherSettings
+from homely.modules.weather.solar import sun_times
 from homely.modules.weather.wmo import icon_for, label_for, short_label_for
 from homely.render.canvas import Canvas
 from homely.render.size import SUPPORTED_SIZES, Size
@@ -57,6 +58,7 @@ def test_parse_fixture():
     assert fc.current.temp == 53.6 and fc.current.code == 3 and not fc.current.is_day
     assert fc.current.time.tzinfo is not None and fc.current.time.utcoffset() == timedelta(hours=-5)
     assert len(fc.daily) == 5 and fc.daily[0].tmax == 71.5 and fc.daily[1].precip_prob == 100
+    assert fc.latitude is not None and abs(fc.latitude - 44.98) < 0.1
     assert fc.daily[0].sunrise is not None and fc.daily[0].sunrise.hour == 6
     assert len(fc.hourly) == 120
     # round-trips through the disk-cache encoding
@@ -86,26 +88,37 @@ async def test_provider_request_params_and_fetch():
 
 def test_wmo_mapping():
     assert icon_for(0) == "clear" and label_for(0) == "Sunny" and label_for(0, is_day=False) == "Clear"
-    assert icon_for(95) == "thunder" and short_label_for(95) == "Storm"
-    assert icon_for(65) == "heavy_rain" and icon_for(66) == "sleet" and icon_for(999) == "cloudy"
+    assert label_for(1) == "Mostly Sunny" and label_for(1, is_day=False) == "Mostly Clear"
+    assert icon_for(95) == "thunder" and label_for(95) == "Thunderstorms" and short_label_for(95) == "Storms"
+    assert icon_for(65) == "heavy_rain" and label_for(65) == "Rainy" and icon_for(66) == "sleet"
+    assert label_for(66) == "Freezing Rain" and icon_for(999) == "cloudy"
 
 
-def test_temp_color_scale_is_cold_blue_hot_red():
-    cold = temp_color(20)
-    hot = temp_color(95)
-    assert cold[2] > cold[0] and hot[0] > hot[2]
+def test_temp_color_scale_matches_prototype_palette():
+    assert temp_color(-60) == (228, 240, 255) and temp_color(125) == (61, 2, 22)  # 38 stops, 5 F apart
+    # Stops are 5 F apart starting at -60, exactly as the prototype indexes them: 70 F is stop 26.
+    assert temp_color(70) == (135, 154, 132) and temp_color(75) == (171, 168, 125)
+    from homely.render.color import lerp
+
+    assert temp_color(72.5) == lerp((135, 154, 132), (171, 168, 125), 0.5)
     assert temp_color(0, metric=True) == temp_color(32)
-    assert temp_color(-100) == temp_color(-20) and temp_color(200) == temp_color(115)
+    assert temp_color(-100) == temp_color(-60) and temp_color(200) == temp_color(125)
+    cold, hot = temp_color(20), temp_color(100)
+    assert cold[2] > cold[0] and hot[0] > hot[2]
 
 
-def test_sky_color_day_night_twilight():
-    sunrise = datetime(2026, 9, 13, 6, 49, tzinfo=CHI)
-    sunset = datetime(2026, 9, 13, 19, 27, tzinfo=CHI)
-    assert sky_color(datetime(2026, 9, 13, 3, 0, tzinfo=CHI), sunrise, sunset) == NIGHT_SKY
-    assert sky_color(datetime(2026, 9, 13, 13, 0, tzinfo=CHI), sunrise, sunset) == DAY_SKY
-    assert sky_color(sunrise, sunrise, sunset) == DAWN_SKY
-    assert sky_color(sunset, sunrise, sunset) == DAWN_SKY
-    assert sky_color(datetime(2026, 9, 13, 23, 0, tzinfo=CHI), sunrise, sunset) == NIGHT_SKY
+def test_sky_gradient_phases():
+    sun = sun_times(44.98, -93.27, datetime(2026, 9, 13).date(), CHI)
+    assert sun.dawn and sun.sunrise and sun.sunset and sun.dusk
+    assert sky_gradient(datetime(2026, 9, 13, 2, 0, tzinfo=CHI), sun) == NIGHT
+    assert sky_gradient(sun.sunrise, sun) == SUNRISE
+    assert sky_gradient(sun.noon, sun) == NOON
+    assert sky_gradient(sun.sunset, sun) == SUNRISE
+    assert sky_gradient(datetime(2026, 9, 13, 23, 30, tzinfo=CHI), sun) == NIGHT
+    # halfway through dawn is a blend of night and sunrise tones
+    mid_dawn = sun.dawn + (sun.sunrise - sun.dawn) / 2
+    top, _ = sky_gradient(mid_dawn, sun)
+    assert NIGHT[0][0] < top[0] < SUNRISE[0][0]
 
 
 # ---- module behaviour -------------------------------------------------------------------------
@@ -119,10 +132,9 @@ def test_should_display_only_with_data_and_page_flip():
     assert mod.should_display() and mod.fps() == 1
     first = FrameInfo(now=NOW_DAY, monotonic=0, dt=0, index=0, slot_elapsed=1, slot_duration=20)
     second = FrameInfo(now=NOW_DAY, monotonic=0, dt=0, index=0, slot_elapsed=15, slot_duration=20)
+    assert mod._page(first) == "current" and mod._page(second) == "current"  # default view: current only
+    mod.settings = WeatherSettings(view="both")
     assert mod._page(first) == "current" and mod._page(second) == "forecast"
-    assert mod._page(replace(first, slot_elapsed=19)) == "forecast"
-    mod.settings = WeatherSettings(view="current")
-    assert mod._page(second) == "current"
 
 
 @pytest.mark.asyncio
@@ -163,9 +175,32 @@ def variants() -> dict[str, tuple[WeatherSettings, Forecast, datetime]]:
         "day_sunny": (WeatherSettings(), sunny, NOW_DAY),
         "day_storm_feels": (WeatherSettings(show_feels_like=True), storm, NOW_DAY),
         "day_snow_cold": (WeatherSettings(), snow, NOW_DAY),
-        "plain_no_gradient_no_strip": (WeatherSettings(temperature_gradient=False, sky_strip=False), sunny, NOW_DAY),
-        "forecast_page": (WeatherSettings(), rainy, NOW_DAY),
-        "forecast_5days_nobars": (WeatherSettings(forecast_days=5, show_precip_bars=False), sunny, NOW_DAY),
+        "plain_black": (
+            WeatherSettings(temperature_gradient=False, sky_half=False, outline_temperature=False),
+            sunny,
+            NOW_DAY,
+        ),
+        "dawn_partly": (
+            WeatherSettings(),
+            replace(fc, current=replace(fc.current, code=2, is_day=True, temp=58.0)),
+            datetime(2026, 9, 13, 6, 20, 0, tzinfo=CHI),
+        ),
+        "dusk_rain_metric": (
+            WeatherSettings(),
+            replace(
+                fc,
+                current=replace(fc.current, code=63, is_day=True, temp=14.0),
+                units="metric",
+                daily=[replace(fc.daily[0], tmax=19.0, tmin=9.0), *fc.daily[1:]],
+            ),
+            datetime(2026, 9, 13, 19, 50, 0, tzinfo=CHI),
+        ),
+        "forecast_page": (WeatherSettings(view="forecast"), rainy, NOW_DAY),
+        "forecast_5days_nobars": (
+            WeatherSettings(view="forecast", forecast_days=5, show_precip_bars=False),
+            sunny,
+            NOW_DAY,
+        ),
     }
 
 
@@ -173,8 +208,7 @@ def variants() -> dict[str, tuple[WeatherSettings, Forecast, datetime]]:
 def test_golden_64x64(name, request):
     settings, fc, now = variants()[name]
     mod = make_module(settings, Size(64, 64), now, fc)
-    progress = 0.75 if name.startswith("forecast") else 0.0
-    assert_golden(render(mod, Size(64, 64), now, progress), f"weather/64x64/{name}", request)
+    assert_golden(render(mod, Size(64, 64), now, 0.0), f"weather/64x64/{name}", request)
 
 
 @pytest.mark.parametrize("size", [s for s in SUPPORTED_SIZES if s != Size(64, 64)], ids=str)
@@ -182,6 +216,6 @@ def test_golden_64x64(name, request):
 def test_golden_other_sizes(size, page, request):
     settings, fc, now = variants()["forecast_page" if page == "forecast" else "day_sunny"]
     mod = make_module(settings, size, now, fc)
-    img = render(mod, size, now, 0.0 if page == "current" else 0.75)
+    img = render(mod, size, now, 0.0)
     assert img.size == size.as_tuple()
     assert_golden(img, f"weather/{size}/{page}", request)

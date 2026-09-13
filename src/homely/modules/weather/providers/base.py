@@ -49,6 +49,8 @@ class Forecast:
     daily: list[Daily] = field(default_factory=list)
     units: Units = "imperial"
     attribution: str = ""
+    latitude: float | None = None
+    longitude: float | None = None
 
     def today(self) -> Daily | None:
         return self.daily[0] if self.daily else None
@@ -69,6 +71,8 @@ class Forecast:
             ],
             units=data.get("units", "imperial"),
             attribution=data.get("attribution", ""),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
         )
 
 

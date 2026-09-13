@@ -1,67 +1,52 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import Field
 
 from homely.core.module import ModuleSettings
 
 
 class MazeSettings(ModuleSettings):
-    corridor: Literal[1, 2, 3] = Field(
-        1,
-        title="Corridor width (pixels)",
-        description="1 = a fine maze with many cells; 3 = chunky",
+    min_cell_px: int = Field(
+        6,
+        ge=3,
+        le=32,
+        title="Smallest cell (pixels)",
+        description="Each round picks a random maze size; cells are at least this big",
         json_schema_extra={"x-group": "Maze", "x-order": 10},
     )
-    build_speed: int = Field(
-        60,
-        ge=5,
-        le=600,
-        title="Build speed (cells per second)",
-        json_schema_extra={"x-group": "Maze", "x-order": 20, "x-widget": "slider"},
+    min_cells: int = Field(
+        3, ge=2, le=20, title="Fewest cells per side", json_schema_extra={"x-group": "Maze", "x-order": 20}
     )
-    solve_speed: int = Field(
-        40,
-        ge=5,
-        le=600,
-        title="Solve speed (steps per second)",
+    draw_speed: int = Field(
+        120,
+        ge=10,
+        le=2000,
+        title="Wall drawing speed (pixels per second)",
         json_schema_extra={"x-group": "Maze", "x-order": 30, "x-widget": "slider"},
     )
+    solve_speed: int = Field(
+        90,
+        ge=10,
+        le=2000,
+        title="Path drawing speed (pixels per second)",
+        json_schema_extra={"x-group": "Maze", "x-order": 40, "x-widget": "slider"},
+    )
     pause_s: float = Field(
-        2.5,
+        5.0,
         ge=0,
-        le=15,
+        le=30,
         title="Pause on the solved maze (seconds)",
-        json_schema_extra={"x-group": "Maze", "x-order": 40},
+        json_schema_extra={"x-group": "Maze", "x-order": 50},
     )
     wall_color: str = Field(
-        "#3060C0",
+        "#FF0000",
         title="Walls",
         pattern=r"^#[0-9A-Fa-f]{6}$",
         json_schema_extra={"x-group": "Colors", "format": "color", "x-order": 10},
     )
-    explore_color: str = Field(
-        "#404048",
-        title="Explored dead ends",
+    path_color: str = Field(
+        "#00FF00",
+        title="Solution path",
         pattern=r"^#[0-9A-Fa-f]{6}$",
         json_schema_extra={"x-group": "Colors", "format": "color", "x-order": 20},
-    )
-    trail_color: str = Field(
-        "#FFB000",
-        title="Solver trail",
-        pattern=r"^#[0-9A-Fa-f]{6}$",
-        json_schema_extra={"x-group": "Colors", "format": "color", "x-order": 30},
-    )
-    path_color: str = Field(
-        "#00FF80",
-        title="Solved path",
-        pattern=r"^#[0-9A-Fa-f]{6}$",
-        json_schema_extra={"x-group": "Colors", "format": "color", "x-order": 40},
-    )
-    rainbow_walls: bool = Field(
-        False,
-        title="Rainbow walls",
-        description="Color walls by when they were built",
-        json_schema_extra={"x-group": "Colors", "x-order": 50},
     )

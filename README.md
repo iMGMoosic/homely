@@ -41,8 +41,8 @@ The installer builds the LED driver, installs homely as a systemd service, disab
 
 | Module | Status |
 |---|---|
-| Clock (seven-segment LCD look or pixel font) | available |
-| Weather (Open-Meteo, no API key; temperature gradient, sky strip, friendly icons) | available |
+| Clock (seven-segment digits; all text program-wide is a 14-segment display) | available |
+| Weather (Open-Meteo, no API key; temperature gradient, sky-colored half, friendly icons) | available |
 | News (RSS/Atom feeds) | available |
 | Idle animations: maze builder/solver, Qix | available |
 | Sports scores (MLB, NFL, NHL, NBA) | planned |

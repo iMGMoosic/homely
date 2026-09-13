@@ -111,4 +111,14 @@ def parse_forecast(data: dict[str, Any], units: Units, attribution: str = "") ->
                 sunset=local(d["sunset"][i]) if d.get("sunset") else None,
             )
         )
-    return Forecast(current=current, hourly=hourly, daily=daily, units=units, attribution=attribution)
+    lat = data.get("latitude")
+    lon = data.get("longitude")
+    return Forecast(
+        current=current,
+        hourly=hourly,
+        daily=daily,
+        units=units,
+        attribution=attribution,
+        latitude=float(lat) if lat is not None else None,
+        longitude=float(lon) if lon is not None else None,
+    )

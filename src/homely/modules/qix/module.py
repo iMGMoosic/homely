@@ -1,53 +1,44 @@
-"""Qix: the bouncing bundle of lines from the 1981 arcade game, as an idle animation."""
+"""Qix: a jittery line whose endpoints bounce around the panel with a short fading trail and
+a color that wanders. (After Leah's qix_type_beat prototype, which runs at 30 fps.)"""
 
 from __future__ import annotations
 
-import math
 import random
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from homely.core.module import FrameInfo, Module, ModuleContext, ModuleInfo, Tier
 from homely.modules.qix.settings import QixSettings
 from homely.render.canvas import Canvas
-from homely.render.color import Color, dim, hsv, lerp, parse_color
+from homely.render.color import Color, dim, hsv, parse_color
 from homely.render.layout import layout_fallback
 from homely.render.size import Size
 
-
-@dataclass
-class Point:
-    x: float
-    y: float
-    vx: float
-    vy: float
-
-    def step(self, dt: float, w: int, h: int, rng: random.Random) -> None:
-        self.x += self.vx * dt
-        self.y += self.vy * dt
-        if self.x < 0:
-            self.x, self.vx = -self.x, abs(self.vx) * rng.uniform(0.8, 1.2)
-        elif self.x > w - 1:
-            self.x, self.vx = 2 * (w - 1) - self.x, -abs(self.vx) * rng.uniform(0.8, 1.2)
-        if self.y < 0:
-            self.y, self.vy = -self.y, abs(self.vy) * rng.uniform(0.8, 1.2)
-        elif self.y > h - 1:
-            self.y, self.vy = 2 * (h - 1) - self.y, -abs(self.vy) * rng.uniform(0.8, 1.2)
+PROTOTYPE_FPS = 30.0
 
 
 @dataclass
 class Qix:
-    a: Point
-    b: Point
-    hue: float
-    lines: deque[tuple[int, int, int, int, float]]  # x0, y0, x1, y1, hue
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    dx1: int = 1
+    dx2: int = 1
+    dy1: int = 1
+    dy2: int = -1
+    r: int = 0
+    g: int = 0
+    b: int = 0
+    hue: float = 0.0
+    lines: deque[tuple[int, int, int, int, Color]] = field(default_factory=deque)
 
 
 class QixModule(Module[QixSettings]):
     info = ModuleInfo(
         id="qix",
         name="Qix",
-        description="Idle animation: a bundle of colorful lines drifts and bounces around the panel.",
+        description="Idle animation: a jittery, color-shifting line bounces around leaving a short trail.",
         tier=Tier.NEED,
         icon="qix",
         default_duration_s=60,
@@ -60,54 +51,70 @@ class QixModule(Module[QixSettings]):
         super().__init__(ctx, settings)
         self.rng = random.Random(seed)
         self.qixes: list[Qix] = []
-        self._spawn_acc = 0.0
-        self._t = 0.0
+        self._frame_acc = 0.0
         self._reset(ctx.size)
 
     def _reset(self, size: Size) -> None:
+        rng = self.rng
         self.qixes = []
-        w, h = size.w, size.h
         for i in range(self.settings.qixes):
-            speed = float(self.settings.speed)
-            a = Point(self.rng.uniform(0, w - 1), self.rng.uniform(0, h - 1), *self._vel(speed))
-            b = Point(self.rng.uniform(0, w - 1), self.rng.uniform(0, h - 1), *self._vel(speed))
-            self.qixes.append(Qix(a, b, hue=i / max(1, self.settings.qixes), lines=deque(maxlen=self.settings.trail)))
-        self._spawn_acc = 0.0
-
-    def _vel(self, speed: float) -> tuple[float, float]:
-        ang = self.rng.uniform(0, 6.283185)
-        s = speed * self.rng.uniform(0.7, 1.3)
-        return math.cos(ang) * s, math.sin(ang) * s
+            q = Qix(
+                x1=rng.randint(0, size.w - 1),
+                y1=rng.randint(0, size.h - 1),
+                x2=rng.randint(0, size.w - 1),
+                y2=rng.randint(0, size.h - 1),
+                r=rng.randint(0, 255),
+                g=rng.randint(0, 255),
+                b=rng.randint(0, 255),
+                hue=i / max(1, self.settings.qixes),
+                lines=deque(maxlen=self.settings.trail),
+            )
+            q.lines.append((int(q.x1), int(q.y1), int(q.x2), int(q.y2), self._current_color(q)))
+            self.qixes.append(q)
 
     async def on_settings_changed(self, settings: QixSettings) -> None:
         self.settings = settings
         self._reset(self.ctx.size)
 
-    def advance(self, dt: float, size: Size) -> None:
-        self._t += dt
-        for q in self.qixes:
-            q.a.step(dt, size.w, size.h, self.rng)
-            q.b.step(dt, size.w, size.h, self.rng)
-        self._spawn_acc += dt * self.settings.spawn_rate
-        while self._spawn_acc >= 1.0:
-            self._spawn_acc -= 1.0
-            for q in self.qixes:
-                hue = (self._t / self.settings.hue_speed + q.hue) % 1.0
-                q.lines.append((round(q.a.x), round(q.a.y), round(q.b.x), round(q.b.y), hue))
+    # ---- simulation: one prototype frame -----------------------------------------------------
 
-    def _color(self, hue: float, age: float, index: int) -> Color:
+    def _move(self, value: float, sign: int, limit: int) -> tuple[float, int]:
+        rng = self.rng
+        value += sign * rng.randint(1, self.settings.jitter) * rng.uniform(1, 3)
+        if value >= limit - 1:
+            return float(limit - 1), -sign
+        if value <= 0:
+            return 0.0, -sign
+        return value, sign
+
+    def _current_color(self, q: Qix) -> Color:
         mode = self.settings.color_mode
+        if mode == "walk":
+            return (q.r, q.g, q.b)
         if mode == "rainbow":
-            base = hsv(hue)
-        elif mode == "duo":
-            base = lerp(parse_color(self.settings.color), parse_color(self.settings.color2), (hue * 4) % 1.0)
-        else:
-            base = parse_color(self.settings.color)
-        if index == 0 and mode != "rainbow":
-            base = lerp(base, (255, 255, 255), 0.4)
-        if self.settings.fade_trail:
-            return dim(base, 0.15 + 0.85 * age)
-        return base
+            return hsv(q.hue)
+        return parse_color(self.settings.color)
+
+    def _step(self, q: Qix, size: Size) -> None:
+        q.x1, q.dx1 = self._move(q.x1, q.dx1, size.w)
+        q.x2, q.dx2 = self._move(q.x2, q.dx2, size.w)
+        q.y1, q.dy1 = self._move(q.y1, q.dy1, size.h)
+        q.y2, q.dy2 = self._move(q.y2, q.dy2, size.h)
+        step = self.settings.color_step
+        q.r = (q.r + self.rng.randint(1, step)) % 256
+        q.g = (q.g + self.rng.randint(1, step)) % 256
+        q.b = (q.b + self.rng.randint(1, step)) % 256
+        q.hue = (q.hue + 0.004) % 1.0
+        q.lines.append((int(q.x1), int(q.y1), int(q.x2), int(q.y2), self._current_color(q)))
+
+    def advance(self, dt: float, size: Size) -> None:
+        """Run whole prototype frames (30/s) regardless of the real render rate."""
+        self._frame_acc += dt * PROTOTYPE_FPS
+        steps = int(self._frame_acc)
+        self._frame_acc -= steps
+        for _ in range(min(steps, 8)):
+            for q in self.qixes:
+                self._step(q, size)
 
     @layout_fallback
     def render_any(self, c: Canvas, frame: FrameInfo) -> None:
@@ -116,6 +123,6 @@ class QixModule(Module[QixSettings]):
         self.advance(min(frame.dt, 0.25), c.size)
         for q in self.qixes:
             n = len(q.lines)
-            for i, (x0, y0, x1, y1, hue) in enumerate(q.lines):
-                age = (i + 1) / n  # 1.0 = newest
-                c.line(x0, y0, x1, y1, self._color(hue, age, 0 if i == n - 1 else 1))
+            for i, (x1, y1, x2, y2, color) in enumerate(q.lines):
+                shade = dim(color, (i + 1) / n) if self.settings.fade_trail else color
+                c.line(x1, y1, x2, y2, shade)

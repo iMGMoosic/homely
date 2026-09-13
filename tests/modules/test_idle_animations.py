@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from homely.core.module import FrameInfo
-from homely.modules.maze.module import MazeModule, Phase
+from homely.modules.maze.module import Grid, MazeModule, Phase
 from homely.modules.maze.settings import MazeSettings
 from homely.modules.qix.module import QixModule
 from homely.modules.qix.settings import QixSettings
@@ -32,59 +32,65 @@ def lit(img):
 # ---- maze --------------------------------------------------------------------------------
 
 
-def test_maze_builds_solves_and_restarts():
-    mod = MazeModule(make_ctx(Size(32, 32)), MazeSettings(build_speed=600, solve_speed=600, pause_s=0.2), seed=1)
-    assert mod.cols == 15 and mod.rows == 15 and mod._phase is Phase.BUILD
-    img = run_frames(mod, Size(32, 32), 60)  # 2 s at 600 cells/s: built and solved
-    assert mod._phase in (Phase.SHOW, Phase.FADE) or mod.solved
-    assert len(mod.visited) == mod.total  # every cell carved
-    assert lit(img) > 100
-    if mod.solved:
-        assert mod.path[0] == mod.start and mod.path[-1] == mod.goal
-    first_img = mod._img
-    run_frames(mod, Size(32, 32), 60)  # pause + fade elapse and a fresh maze starts
-    assert mod._img is not first_img
+def test_grid_is_a_perfect_maze_with_entrance_and_exit():
+    import random
+
+    g = Grid(7, 9, random.Random(3))
+    assert not g.right[g.end_row][8]  # exit open on the right edge
+    path = g.shortest_path()
+    assert path[0] == (g.start_row, 0) and path[-1] == (g.end_row, 8)
+    assert all(g.open_between(a, b) for a, b in zip(path, path[1:], strict=False))
+    # every cell is reachable (a spanning tree has rows*cols-1 openings)
+    openings = sum(not v for row in g.right[:] for v in row[:-1]) + sum(not v for row in g.bottom[:-1] for v in row)
+    assert openings == 7 * 9 - 1
 
 
-def test_maze_corridor_width_changes_grid():
-    ctx = make_ctx(Size(64, 64))
-    fine = MazeModule(ctx, MazeSettings(corridor=1), seed=3)
-    chunky = MazeModule(ctx, MazeSettings(corridor=3), seed=3)
-    assert fine.cols == 31 and chunky.cols == 15
-    img = run_frames(chunky, Size(64, 64), 5)
-    assert img.size == (64, 64)
+def test_maze_draws_walls_then_path_then_restarts():
+    mod = MazeModule(make_ctx(Size(64, 64)), MazeSettings(draw_speed=2000, solve_speed=2000, pause_s=0.5), seed=1)
+    assert mod._phase is Phase.WALLS and 3 <= mod.grid.cols <= 10 and 3 <= mod.grid.rows <= 10
+    first = mod.grid
+    img = run_frames(mod, Size(64, 64), 60)  # 2 s at 2000 px/s: walls and path drawn, hold begun
+    assert mod._phase is Phase.HOLD or mod.grid is not first
+    assert lit(img) > 60
+    run_frames(mod, Size(64, 64), 30)  # hold expires -> a new maze has started
+    assert mod.grid is not first
+
+
+def test_maze_sizes_respect_min_cell():
+    mod = MazeModule(make_ctx(Size(32, 32)), MazeSettings(min_cell_px=8, min_cells=2), seed=2)
+    assert mod.grid.cols <= 4 and mod.grid.rows <= 4 and mod.cell_w >= 8
 
 
 @pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
 def test_golden_maze(size, request):
-    mod = MazeModule(make_ctx(size), MazeSettings(build_speed=300, solve_speed=300), seed=42)
-    img = run_frames(mod, size, 90)  # 3 s: mid-build or solving depending on size
+    mod = MazeModule(make_ctx(size), MazeSettings(draw_speed=400, solve_speed=400), seed=42)
+    img = run_frames(mod, size, 90)  # 3 s in
     assert_golden(img, f"maze/{size}/frame_90", request)
 
 
-def test_golden_maze_rainbow_solved(request):
-    mod = MazeModule(
-        make_ctx(Size(64, 64)), MazeSettings(rainbow_walls=True, build_speed=600, solve_speed=600, pause_s=5), seed=7
-    )
-    img = run_frames(mod, Size(64, 64), 150)
-    assert mod.solved
-    assert_golden(img, "maze/64x64/rainbow_solved", request)
+def test_golden_maze_solved(request):
+    mod = MazeModule(make_ctx(Size(64, 64)), MazeSettings(draw_speed=2000, solve_speed=2000, pause_s=10), seed=7)
+    img = run_frames(mod, Size(64, 64), 60)
+    assert mod._phase is Phase.HOLD
+    assert_golden(img, "maze/64x64/solved", request)
 
 
 # ---- qix ----------------------------------------------------------------------------------
 
 
-def test_qix_moves_and_keeps_trail_bounded():
-    mod = QixModule(make_ctx(Size(64, 64)), QixSettings(trail=10, qixes=2), seed=5)
+def test_qix_stays_in_bounds_and_trail_bounded():
+    mod = QixModule(make_ctx(Size(64, 64)), QixSettings(trail=5, qixes=2), seed=5)
     img = run_frames(mod, Size(64, 64), 90)
-    assert all(len(q.lines) == 10 for q in mod.qixes)
+    assert all(len(q.lines) == 5 for q in mod.qixes)
     for q in mod.qixes:
-        for p in (q.a, q.b):
-            assert 0 <= p.x <= 63 and 0 <= p.y <= 63
-    assert lit(img) > 20
+        for v in (q.x1, q.x2):
+            assert 0 <= v <= 63
+        for v in (q.y1, q.y2):
+            assert 0 <= v <= 63
+    assert lit(img) > 10
 
 
-@pytest.mark.parametrize("mode", ["rainbow", "single", "duo"])
+@pytest.mark.parametrize("mode", ["walk", "rainbow", "single"])
 def test_golden_qix_modes(mode, request):
     mod = QixModule(make_ctx(Size(64, 64)), QixSettings(color_mode=mode), seed=11)
     assert_golden(run_frames(mod, Size(64, 64), 60), f"qix/64x64/{mode}", request)
@@ -95,4 +101,4 @@ def test_golden_qix_sizes(size, request):
     mod = QixModule(make_ctx(size), QixSettings(), seed=11)
     img = run_frames(mod, size, 60)
     assert img.size == size.as_tuple()
-    assert_golden(img, f"qix/{size}/rainbow", request)
+    assert_golden(img, f"qix/{size}/walk", request)

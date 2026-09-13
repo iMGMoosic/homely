@@ -67,6 +67,11 @@ class DisplayConfig(BaseModel):
         description="auto = hardware when the rgbmatrix library is importable, else preview only",
     )
     preview: bool = Field(True, title="Live preview", description="Publish frames to the web UI")
+    font: Literal["segment", "pixel"] = Field(
+        "segment",
+        title="Text style",
+        description="segment = everything looks like a 14-segment display; pixel = bitmap fonts",
+    )
     emulated_size: str | None = Field(
         None, title="Emulated size", description="Logical size when running without hardware, e.g. 64x32"
     )
