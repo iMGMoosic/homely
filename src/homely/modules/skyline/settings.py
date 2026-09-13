@@ -11,7 +11,7 @@ class SkylineSettings(ModuleSettings):
     mode: Literal["timelapse", "realtime"] = Field(
         "timelapse",
         title="Clock",
-        description="timelapse = a whole day passes during the turn, starting from now; realtime = matches the real sky",
+        description="timelapse = a whole day passes during the turn, starting now; realtime = matches the real sky",
         json_schema_extra={"x-group": "Sky", "x-order": 10},
     )
     day_length_s: int = Field(
