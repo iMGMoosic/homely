@@ -11,6 +11,13 @@
   let logLevel = $state<'DEBUG' | 'INFO' | 'WARNING' | 'ERROR'>('INFO');
   let logsOpen = $state(false);
   let logBox: HTMLPreElement | undefined = $state();
+  const logText = $derived(
+    logs.length
+      ? logs
+          .map((ln) => `${ln.ts.slice(11, 19)} ${ln.level.padEnd(7)} ${ln.logger}: ${ln.message}`)
+          .join('\n')
+      : 'nothing logged at this level yet',
+  );
 
   async function loadLogs() {
     if (!logsOpen) return;
@@ -153,10 +160,7 @@
       </select>
       <button class="btn sm" onclick={loadLogs}>Refresh</button>
     </div>
-    <pre class="logs mono small" bind:this={logBox}>{#each logs as ln (ln.ts + ln.message)}<span
-          class={'lvl ' + ln.level}>{ln.ts.slice(11, 19)} {ln.level.padEnd(7)}</span
-        > {ln.logger}: {ln.message}
-      {/each}{#if !logs.length}nothing logged at this level yet{/if}</pre>
+    <pre class="logs mono small" bind:this={logBox}>{logText}</pre>
   </details>
 {:else}
   <p class="muted"><span class="spin"></span> Loading…</p>
@@ -173,15 +177,6 @@
     white-space: pre-wrap;
     word-break: break-word;
     margin: 0;
-  }
-  .lvl {
-    color: var(--text-dim);
-  }
-  .lvl.WARNING {
-    color: var(--warn, #e0a030);
-  }
-  .lvl.ERROR {
-    color: var(--danger);
   }
   summary {
     cursor: pointer;
