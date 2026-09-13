@@ -6,9 +6,20 @@ updates:
   - package-ecosystem: npm
     directory: /web
     schedule: { interval: weekly }
+    ignore:
+      # svelte-check only supports TypeScript 5.x/6.x; revisit when it accepts 7
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+      svelte-toolchain:
+        # vite and its Svelte plugin must move together
+        patterns: ["vite", "@sveltejs/*", "svelte-check", "prettier-plugin-svelte"]
+        update-types: [major]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
+    groups:
+      actions:
+        patterns: ["*"]

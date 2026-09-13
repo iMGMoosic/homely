@@ -272,8 +272,7 @@
         class:invalid={!!error}
         rows="3"
         value={value ?? ''}
-        oninput={str}
-      ></textarea>
+        oninput={str}></textarea>
     {:else if spec.widget === 'text'}
       <input
         {id}
