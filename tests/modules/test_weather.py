@@ -122,8 +122,9 @@ def test_sky_gradient_phases():
 
 def test_should_display_only_with_data_and_page_flip():
     ctx = make_ctx(Size(64, 64), now=NOW_DAY)
+    ctx.location.config.latitude, ctx.location.config.longitude = 44.98, -93.27
     mod = WeatherModule(ctx, WeatherSettings())
-    assert not mod.should_display()
+    assert not mod.should_display()  # located, still loading: skip the turn rather than flash a card
     mod.forecast.set(fixture_forecast(), NOW_DAY)
     assert mod.should_display() and mod.fps() == 1
     first = FrameInfo(now=NOW_DAY, monotonic=0, dt=0, index=0, slot_elapsed=1, slot_duration=20)
@@ -194,3 +195,36 @@ def test_golden_other_sizes(size, page, request):
     img = render(mod, size, now, 0.0 if page == "current" else 0.75)
     assert img.size == size.as_tuple()
     assert_golden(img, f"weather/{size}/{page}", request)
+
+
+def _status_frame() -> FrameInfo:
+    return FrameInfo(now=NOW_DAY, monotonic=0.0, dt=0.0, index=0, slot_elapsed=1.0, slot_duration=20)
+
+
+def test_no_location_shows_a_card_instead_of_a_blank_screen(tmp_path):
+    """Without latitude/longitude the module must still take its turn and say why."""
+    ctx = make_ctx(Size(64, 64))
+    ctx.location.config.latitude = None
+    ctx.location.config.longitude = None
+    mod = WeatherModule(ctx, WeatherSettings())
+    assert mod.should_display() is True
+    assert mod._status_message() == ("No location", "set it in Display settings")
+    c = Canvas(Size(64, 64))
+    c.clear()
+    mod.render(c, _status_frame())
+    img = c.snapshot()
+    assert sum(1 for p in img.getdata() if p != (0, 0, 0)) > 50  # something legible is drawn
+
+
+def test_status_card_at_every_size():
+    ctx = make_ctx(Size(64, 64))
+    ctx.location.config.latitude = None
+    ctx.location.config.longitude = None
+    for size in SUPPORTED_SIZES:
+        mod = WeatherModule(make_ctx(size), WeatherSettings())
+        mod.ctx.location.config.latitude = None
+        mod.ctx.location.config.longitude = None
+        c = Canvas(size)
+        c.clear()
+        mod.render(c, _status_frame())
+        assert sum(1 for p in c.snapshot().getdata() if p != (0, 0, 0)) > 20, size

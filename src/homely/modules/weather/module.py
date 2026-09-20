@@ -91,7 +91,35 @@ class WeatherModule(Module[WeatherSettings]):
         self.ctx.invalidate()
 
     def should_display(self) -> bool:
-        return self.forecast.has_value
+        # With no data we still take a turn when something is wrong, so the panel explains itself
+        # instead of going blank (no location set, or every fetch so far has failed).
+        return self.forecast.has_value or self._status_message() is not None
+
+    def _status_message(self) -> tuple[str, str] | None:
+        """(headline, detail) to show when there is no forecast to draw, else None."""
+        if self.forecast.has_value:
+            return None
+        if self.ctx.location.latlon is None:
+            return ("No location", "set it in Display settings")
+        if self.forecast.error is not None:
+            return ("No weather", "check the network")
+        return None  # still loading on first start: skip the turn rather than flash a placeholder
+
+    def _draw_status(self, c: Canvas) -> None:
+        msg = self._status_message()
+        if msg is None:
+            return
+        head, detail = msg
+        text = self._text_color()
+        c.clear((18, 20, 30))
+        fonts = [get_font(n) for n in ("6x10", "5x8", "4x6", "tom-thumb")]
+        hf, htext = fit_text(head, fonts, c.width - 2)
+        df, dtext = fit_text(detail, [get_font("4x6"), get_font("tom-thumb")], c.width - 2)
+        fits_detail = c.height >= hf.line_height + df.line_height + 3
+        top = (c.height - (hf.line_height + (df.line_height + 2 if fits_detail else 0))) // 2
+        c.text_centered(top, htext, hf, text)
+        if fits_detail:
+            c.text_centered(top + hf.line_height + 2, dtext, df, dim(text, 0.7))
 
     # ---- shared drawing --------------------------------------------------------------
 
@@ -192,6 +220,7 @@ class WeatherModule(Module[WeatherSettings]):
     def render_64(self, c: Canvas, frame: FrameInfo) -> None:
         got = self._frame(c, frame)
         if got is None:
+            self._draw_status(c)
             return
         fc, area, now = got
         if self._page(frame) == "forecast":
@@ -284,6 +313,7 @@ class WeatherModule(Module[WeatherSettings]):
     def render_any(self, c: Canvas, frame: FrameInfo) -> None:
         got = self._frame(c, frame)
         if got is None:
+            self._draw_status(c)
             return
         fc, area, now = got
         if self._page(frame) == "forecast":
