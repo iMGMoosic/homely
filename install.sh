@@ -107,10 +107,13 @@ fi
 # ---------- preflight ----------
 ARCH=$(uname -m)
 [ "$ARCH" = aarch64 ] || warn "expected aarch64, got $ARCH; continuing anyway"
-. /etc/os-release 2>/dev/null || true
-case "${VERSION_CODENAME:-}" in
-  bookworm|trixie) : ;;
-  *) warn "tested on Raspberry Pi OS Bookworm and Trixie; you have ${PRETTY_NAME:-unknown}" ;;
+# Read os-release in subshells: sourcing it here would clobber this script's own variables
+# (it defines VERSION, e.g. "13 (trixie)", which would end up in the release URL).
+OS_CODENAME=$(. /etc/os-release 2>/dev/null; printf '%s' "${VERSION_CODENAME:-}")
+OS_PRETTY=$(. /etc/os-release 2>/dev/null; printf '%s' "${PRETTY_NAME:-unknown}")
+case "$OS_CODENAME" in
+  bookworm|trixie) log "OS: $OS_PRETTY" ;;
+  *) warn "tested on Raspberry Pi OS Bookworm and Trixie; you have $OS_PRETTY" ;;
 esac
 if [ -r /proc/device-tree/model ]; then log "Detected: $(tr -d '\0' </proc/device-tree/model)"; fi
 BOOT=/boot/firmware; [ -d "$BOOT" ] || BOOT=/boot
