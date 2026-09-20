@@ -30,7 +30,7 @@ Details, tuning and troubleshooting: [docs/hardware.md](docs/hardware.md).
 ## Install (on the Pi)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash
+curl -qfsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash
 ```
 
 The installer builds the LED driver, installs homely as a systemd service, disables onboard audio

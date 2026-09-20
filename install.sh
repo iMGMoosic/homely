@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # homely installer for Raspberry Pi OS (Bookworm, 64-bit).
-#   curl -fsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash
+#   curl -qfsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash
 # Options (append after "bash -s --"):
 #   --version X.Y.Z   install a specific release (default: latest)
 #   --from-pypi       install homely-display from PyPI instead of a GitHub release wheel
@@ -54,6 +54,44 @@ ask()  { # ask "question" default(y/n)
 }
 
 [ "$(id -u)" = 0 ] || die "run as root: curl ... | sudo bash"
+
+# ---------- curl sanity ----------
+# curl reads ~/.curlrc (and $CURL_HOME/.curlrc) before every request. A malformed entry there --
+# or a bad proxy variable -- makes every single fetch fail with a confusing error that names no
+# URL, so check once, up front, and say exactly what is wrong.
+# -q must come first: it stops curl from reading ~/.curlrc. A stray "url =" line there adds a
+# second, bogus request to every invocation, which swallows -o (so downloads land on stdout and
+# the file is never written) and prints "URL rejected: Malformed input to a URL function".
+fetch() { # fetch URL [curl args...]
+  local url="$1"; shift
+  case "$url" in
+    *[[:space:]]*) die "internal: URL contains whitespace: '$url'" ;;
+  esac
+  curl -q -fsSL "$url" "$@"
+}
+
+check_curl() {
+  local out rc
+  out=$(curl -q -fsS -o /dev/null -w '%{http_code}' https://api.github.com/ 2>&1); rc=$?
+  if [ "$rc" != 0 ]; then
+    warn "curl cannot reach api.github.com (exit $rc): $out"
+    case "$rc" in
+      5) die "curl cannot use the configured proxy: https_proxy=${https_proxy:-unset} http_proxy=${http_proxy:-unset}" ;;
+      6|7|28) die "no network access to api.github.com from this Pi." ;;
+      *) die "fix curl first, then re-run (try: curl -v https://api.github.com/)." ;;
+    esac
+  fi
+  # curl works; warn about a broken curlrc anyway, since anything else the user runs will trip on it.
+  for f in "${CURL_HOME:+$CURL_HOME/.curlrc}" "$HOME/.curlrc" /root/.curlrc; do
+    [ -n "$f" ] && [ -f "$f" ] || continue
+    if ! curl -fsS https://api.github.com/ >/dev/null 2>&1; then
+      warn "$f contains an entry that breaks plain curl commands (homely itself is unaffected; it uses curl -q):"
+      sed -n '1,20p' "$f" >&2
+    fi
+    break
+  done
+}
+check_curl
 
 if [ "$UNINSTALL" = 1 ]; then
   log "Stopping and removing the homely service"
@@ -128,7 +166,7 @@ else
   API="https://api.github.com/repos/$REPO/releases"
   if [ -z "$VERSION" ]; then
     # `|| true` so a 404 (no releases yet) is reported by us, not as a raw curl error under `set -e`.
-    LATEST=$(curl -fsSL "$API/latest" || true)
+    LATEST=$(fetch "$API/latest" || true)
     VERSION=$(printf '%s' "$LATEST" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
     VERSION=$(clean "$VERSION")
     if [ -z "$VERSION" ]; then
@@ -140,11 +178,11 @@ else
   fi
   if [ "$VERSION" != source ]; then
     log "Installing homely $VERSION from GitHub release"
-    WHEEL_URL=$(curl -fsSL "$API/tags/v$VERSION" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -n1)
+    WHEEL_URL=$(fetch "$API/tags/v$VERSION" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -n1)
     WHEEL_URL=$(clean "$WHEEL_URL")
     [ -n "$WHEEL_URL" ] || die "release v$VERSION has no wheel attached; try --from-source"
     TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-    curl -fsSL -o "$TMP/homely.whl" "$WHEEL_URL"
+    fetch "$WHEEL_URL" -o "$TMP/homely.whl"
     "$VENV/bin/pip" install -q --upgrade "$TMP/homely.whl"
   fi
 fi
@@ -171,9 +209,10 @@ if [ -f "$PKG_DIR/packaging/homely.service" ]; then
   install -m 644 "$PKG_DIR/packaging/homely.avahi.xml" /etc/avahi/services/homely.service
   install -m 440 "$PKG_DIR/packaging/homely.sudoers" /etc/sudoers.d/homely
 else
-  curl -fsSL "https://raw.githubusercontent.com/$REPO/main/packaging/homely.service" -o /etc/systemd/system/homely.service
-  curl -fsSL "https://raw.githubusercontent.com/$REPO/main/packaging/homely.avahi.xml" -o /etc/avahi/services/homely.service
-  curl -fsSL "https://raw.githubusercontent.com/$REPO/main/packaging/homely.sudoers" -o /etc/sudoers.d/homely; chmod 440 /etc/sudoers.d/homely
+  RAW="https://raw.githubusercontent.com/$REPO/$REF/packaging"
+  fetch "$RAW/homely.service" -o /etc/systemd/system/homely.service
+  fetch "$RAW/homely.avahi.xml" -o /etc/avahi/services/homely.service
+  fetch "$RAW/homely.sudoers" -o /etc/sudoers.d/homely; chmod 440 /etc/sudoers.d/homely
 fi
 visudo -cf /etc/sudoers.d/homely >/dev/null || { rm -f /etc/sudoers.d/homely; warn "sudoers entry invalid; reboot/shutdown from the UI disabled"; }
 systemctl daemon-reload

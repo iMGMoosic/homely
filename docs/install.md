@@ -1,13 +1,16 @@
 # Installing on the Pi
 
-Raspberry Pi OS **Bookworm or Trixie**, 64-bit, on a Pi 4. Copy the command as one line: a stray
-space or line break inside the URL makes curl fail with `URL rejected: Malformed input to a URL
-function`.
+Raspberry Pi OS **Bookworm or Trixie**, 64-bit, on a Pi 4.
+
+The `-q` in the command matters: it makes curl ignore `~/.curlrc`. If that file contains a stray
+`url =` line, curl silently adds a second request to *every* invocation, which prints
+`URL rejected: Malformed input to a URL function` and makes `-o` downloads land on stdout instead
+of in a file.
 
 ## One-liner
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash
+curl -qfsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash
 ```
 
 What it does (idempotent; re-run it to upgrade):
@@ -27,7 +30,7 @@ release needed), `--ref BRANCH`, `--no-isolcpus`, `--no-hostname`, `--rebuild-ma
 `--uninstall [--purge]`. Pass them after `bash -s --`, for example:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash -s -- --yes
+curl -qfsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash -s -- --yes
 ```
 
 ## Manual steps
