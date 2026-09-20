@@ -12,6 +12,7 @@
 #   --uninstall       remove the service and /opt/homely (add --purge to also remove config/state)
 set -euo pipefail
 
+SCRIPT_REV="2026-09-19.4"          # bump when install.sh changes; printed at startup
 REPO="imgmoosic/homely"
 MATRIX_REPO="https://github.com/hzeller/rpi-rgb-led-matrix"
 MATRIX_REF="51d3231e370593b60952b2c3b18d2e3802329f18"   # pinned hzeller commit (2026-09-07T18:36:32Z)
@@ -21,7 +22,7 @@ CONF_DIR=/etc/homely
 STATE_DIR=/var/lib/homely
 USER_NAME=homely
 
-VERSION=""; FROM_PYPI=0; FROM_SOURCE=0; YES=0; ISOLCPUS=1; SET_HOSTNAME=1; REBUILD=0; UNINSTALL=0; PURGE=0
+HOMELY_VERSION=""; FROM_PYPI=0; FROM_SOURCE=0; YES=0; ISOLCPUS=1; SET_HOSTNAME=1; REBUILD=0; UNINSTALL=0; PURGE=0
 REF=main
 
 # Strip whitespace and control characters; a stray space or CR (easy to introduce by copying a
@@ -29,7 +30,7 @@ REF=main
 clean() { printf '%s' "${1:-}" | tr -d '[:space:]'; }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --version) VERSION=$(clean "${2:-}"); shift ;;
+    --version) HOMELY_VERSION=$(clean "${2:-}"); shift ;;
     --from-pypi) FROM_PYPI=1 ;;
     --from-source) FROM_SOURCE=1 ;;
     --ref) REF=$(clean "${2:-}"); shift ;;
@@ -53,6 +54,7 @@ ask()  { # ask "question" default(y/n)
   reply="${reply:-$2}"; [[ "$reply" =~ ^[Yy] ]]
 }
 
+log "homely installer rev $SCRIPT_REV"
 [ "$(id -u)" = 0 ] || die "run as root: curl ... | sudo bash"
 
 # ---------- curl sanity ----------
@@ -164,26 +166,26 @@ if [ "$FROM_SOURCE" = 1 ]; then
   install_from_source
 elif [ "$FROM_PYPI" = 1 ]; then
   log "Installing homely-display from PyPI"
-  if [ -n "$VERSION" ]; then "$VENV/bin/pip" install -q --upgrade "homely-display==$VERSION"; else "$VENV/bin/pip" install -q --upgrade homely-display; fi
+  if [ -n "$HOMELY_VERSION" ]; then "$VENV/bin/pip" install -q --upgrade "homely-display==$HOMELY_VERSION"; else "$VENV/bin/pip" install -q --upgrade homely-display; fi
 else
   API="https://api.github.com/repos/$REPO/releases"
-  if [ -z "$VERSION" ]; then
+  if [ -z "$HOMELY_VERSION" ]; then
     # `|| true` so a 404 (no releases yet) is reported by us, not as a raw curl error under `set -e`.
     LATEST=$(fetch "$API/latest" || true)
-    VERSION=$(printf '%s' "$LATEST" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
-    VERSION=$(clean "$VERSION")
-    if [ -z "$VERSION" ]; then
+    HOMELY_VERSION=$(printf '%s' "$LATEST" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
+    HOMELY_VERSION=$(clean "$HOMELY_VERSION")
+    if [ -z "$HOMELY_VERSION" ]; then
       warn "$REPO has no published release yet"
       log "Falling back to a source install; pass --version X.Y.Z once releases exist"
       install_from_source
-      VERSION=source
+      HOMELY_VERSION=source
     fi
   fi
-  if [ "$VERSION" != source ]; then
-    log "Installing homely $VERSION from GitHub release"
-    WHEEL_URL=$(fetch "$API/tags/v$VERSION" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -n1)
+  if [ "$HOMELY_VERSION" != source ]; then
+    log "Installing homely $HOMELY_VERSION from GitHub release"
+    WHEEL_URL=$(fetch "$API/tags/v$HOMELY_VERSION" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -n1)
     WHEEL_URL=$(clean "$WHEEL_URL")
-    [ -n "$WHEEL_URL" ] || die "release v$VERSION has no wheel attached; try --from-source"
+    [ -n "$WHEEL_URL" ] || die "release v$HOMELY_VERSION has no wheel attached; try --from-source"
     TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
     fetch "$WHEEL_URL" -o "$TMP/homely.whl"
     "$VENV/bin/pip" install -q --upgrade "$TMP/homely.whl"
