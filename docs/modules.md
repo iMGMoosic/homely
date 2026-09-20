@@ -25,7 +25,10 @@ Want to write one? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Seven-segment LCD-style digits by default (`style: segment`) with optional faint "unlit" segments,
 or a pixel font (`style: pixel`). 12/24 hour, seconds, blinking colon, date formats, per-element
-colors, and a timezone override. Layouts for every supported size.
+colors, and a timezone override. Layouts for every supported size, including a letterbox one for
+128x32 that puts the time across the left and stacks the date, seconds and AM/PM in a column on
+the right -- without it a 128-wide board reuses the 64-wide layout and leaves its outer thirds
+dark.
 
 ## Weather
 
@@ -44,6 +47,10 @@ latitude, longitude, name and timezone.
   times for your location: astronomical dawn and dusk, sunrise, solar noon and sunset.
 - **Views**: `both` shows current conditions for the first half of the turn, then the daily
   forecast (with hourly rain-chance bars where there is room). Or pick one.
+- **Forecast days**: `forecast_days: 0` (the default) picks automatically -- five days on panels
+  96 px or wider, three on smaller ones. Set 1-5 to override.
+- **Feels-like**: `show_feels_like` adds the apparent temperature under the reading on every
+  layout, and is skipped when it rounds to the same number as the temperature.
 - Metric or imperial follows the global location units. The last forecast is cached on disk so a
   reboot shows weather immediately.
 
@@ -53,22 +60,30 @@ implementing `fetch(lat, lon, units, timezone) -> Forecast` and registering it i
 ## News
 
 Headlines from any RSS or Atom feeds (defaults: BBC World, NPR, Hacker News). Each turn shows a
-few headlines (`headlines_per_slot`, `seconds_per_headline`), wrapped to fit, with the source name
-in its color and the item age. Feeds are fetched with conditional requests (ETag/Last-Modified),
-one bad feed never blocks the others, and `mix: interleave` takes turns between sources.
+few headlines (`headlines_per_slot`, 10 seconds each by default via `seconds_per_headline`),
+wrapped to fit, with the source name in its color and the item age. Feeds are fetched with
+conditional requests (ETag/Last-Modified), one bad feed never blocks the others, and
+`mix: interleave` takes turns between sources.
 
 ## Maze (idle animation)
 
 Each round picks a random maze size (cells at least `min_cell_px` wide), carves a perfect maze,
-and opens an entrance on the left edge and an exit on the right edge at random rows. The thin
-red walls are drawn one pixel at a time (`draw_speed`), then the shortest path is traced in
-green through the cell centers (`solve_speed`), held for `pause_s`, and the next maze begins.
+and opens an entrance on the left edge and an exit on the right edge at random rows. Cells are
+not all the same size: leftover pixels are spread across them so the outer walls always land on
+the panel edges, with no unlit margin. The thin red walls are drawn one pixel at a time
+(`draw_speed`), then the shortest path is traced in green through the cell centers
+(`solve_speed`), held for `pause_s`, and the next maze begins.
 
 ## Qix (idle animation)
 
 A bundle of lines whose two endpoints drift and bounce around the panel, leaving a fading trail,
 as in the 1981 arcade game. Choose `rainbow`, `single` or `duo` colors, trail length, speed and up
 to three independent qixes.
+
+`wander` (default 45) is how far the motion strays from a straight bounce. A plain reflection
+keeps the speed along each axis forever, so the heading only ever takes four values and a wide
+panel settles into the same up-down, left-right path within seconds; `wander` adds a slow drift
+to the heading and scatters each bounce. Set it to 0 for billiard-ball bounces.
 
 ## More idle animations
 
@@ -80,8 +95,10 @@ to three independent qixes.
 - **Game of Life**: Conway's rules on a wrapping board (or hard edges). Newborn cells flash white
   and settle into the color; dying cells leave a fading ghost. A stalled or empty soup fades out
   and reseeds. `cell_px`, `generations_per_second`, `density`, `color_mode`.
-- **Lava lamp**: slow metaball blobs that rise, sink and merge; `classic`, `ocean`, `toxic`,
-  `sunset` palettes or your own three colors.
+- **Lava lamp**: a turn starts the way a real lamp does -- everything pooled in one mass at the
+  bottom, which swells and then peels off one blob at a time as it warms up, after which the
+  blobs rise, sink and merge. Palettes: `classic`, `ocean`, `toxic`, `sunset`, `ember`, `berry`,
+  `cyber`, `mint`, `gold`, `ice`, or your own three colors.
 - **TV static**: analog snow with a rolling bar and scanlines; every few seconds the set flips to a
   channel (color bars, a test card, NO SIGNAL, PLEASE STAND BY) and tears back to snow.
 - **Snake**: plays itself with a shortest-path search to the food, refusing moves that would cut
@@ -89,18 +106,31 @@ to three independent qixes.
   itself it flashes and restarts.
 - **Growing tree**: a space-colonization tree grows branch by branch into a random canopy shape,
   leafs out, turns autumn colors, sheds its leaves to the ground and starts again as a sapling.
+  Leaves are stamps rather than single pixels, which vanish on a real panel: `leaf_size: 0` sizes
+  them from the panel (2 px up to 32 tall, 3 up to 64, 4 above), or set 1-4 yourself.
 - **Skyline**: a generated city under a sky that follows the sun (same palette and solar math as
   the weather module, for your location). The sun and moon arc across, stars twinkle after dusk,
   windows light up in the evening and go dark toward morning, cars pass on the street. `timelapse`
   runs a whole day during the turn starting from now; `realtime` matches the real sky.
 
-- **Light cycles**: two to four riders race across the arena leaving walls of light. Each steers
-  by how much open room a move leaves (a bounded flood fill) and swerves late when a wall is
-  close; a crash derezzes the trail into flickering fragments, and the last rider standing
-  flashes as the winner. `cycles`, `speed`, `lookahead`, `palette` (classic blue vs orange).
+- **Light cycles**: two to four riders race across the arena leaving walls of light. For every
+  legal move a rider runs one multi-source breadth-first search from its own would-be head and
+  each rival head at once and counts the cells it would reach first -- its territory -- which
+  covers both not getting boxed in and not handing the board away. It also refuses moves with no
+  exit, hugs walls once it is inside a region it can count to the end, and holds a straight line
+  while that costs it no territory. A crash derezzes the trail into flickering fragments, and the
+  last rider standing flashes as the winner. `cycles`, `speed`, `lookahead`, `cell_px`, `palette`
+  (classic blue vs orange). Cells default to 1-4 px so the arena stays around 1200 cells: small
+  enough for a rider to search the whole board before committing, and fat enough that trails read
+  as lines.
 
 All of them are seeded so their goldens are reproducible, and all render in well under a
-millisecond per frame on the Mac (the 3D ones draw incrementally into a depth buffer).
+millisecond per frame on the Mac (the 3D ones draw incrementally into a depth buffer; light
+cycles peaks around 2 ms on a step where every rider re-searches the board).
+
+Every animation restarts when the rotation flips to it, rather than resuming where its last turn
+left off -- a module implements this by overriding `on_enter()`. Modules whose whole output comes
+from the clock or from polled data (clock, weather) have nothing to restart and leave it alone.
 
 ## Idle module
 

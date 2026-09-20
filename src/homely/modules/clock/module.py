@@ -263,6 +263,35 @@ class ClockModule(Module[ClockSettings]):
         if has_date:
             self._draw_date(c, y, now, ("6x10", "5x8", "4x6", "tom-thumb"), c.width - 2, date_color)
 
+    def _seg_letterbox(self, c: Canvas, frame: FrameInfo) -> None:
+        """Panels four times wider than they are tall (128x32).
+
+        Without a layout of their own these reuse the 64x32 one, and since a 128-wide panel is
+        not an even multiple of it in both axes the small layout is centred rather than scaled,
+        leaving the outer thirds of the board dark. Here the time fills the left and everything
+        else stacks into a column on the right.
+        """
+        now = self.now(frame)
+        time_color, date_color, accent = self.colors()
+        has_date = self.settings.show_date
+        extras = self.settings.show_seconds or bool(self.ampm(now))
+        side = min(48, c.width // 3) if (has_date or extras) else 0
+        avail = c.width - 2 - side
+        font = fit_segment_font("88:88", avail, c.height - 2)
+        x = 1 + (avail - font.measure("88:88")) // 2
+        self._draw_time_segments(c, x, (c.height - font.h) // 2, font, now, frame, time_color)
+        if not side:
+            return
+        col = c.sub(c.width - side, 0, side, c.height)
+        seg_h = min(10, c.height // 3)
+        if extras and has_date:
+            self._seconds_ampm_row(col, (c.height // 2 - seg_h) // 2, side - 1, now, accent, seg_h)
+            self._draw_date(col, c.height // 2 + 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
+        elif extras:
+            self._seconds_ampm_row(col, (c.height - seg_h) // 2, side - 1, now, accent, seg_h)
+        else:
+            self._draw_date(col, (c.height - 8) // 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
+
     # ---- pixel layouts ---------------------------------------------------------------
 
     def _pix_64x64(self, c: Canvas, frame: FrameInfo) -> None:
@@ -345,6 +374,42 @@ class ClockModule(Module[ClockSettings]):
         if ampm and c.width >= 48:
             c.text(c.width - 9, y, ampm, get_font("4x6"), accent)
 
+    def _pix_letterbox(self, c: Canvas, frame: FrameInfo) -> None:
+        """Pixel-font counterpart to :meth:`_seg_letterbox`."""
+        now = self.now(frame)
+        time_color, date_color, accent = self.colors()
+        has_date = self.settings.show_date
+        extras = self.settings.show_seconds or bool(self.ampm(now))
+        f46 = get_font("4x6")
+        side = min(48, c.width // 3) if (has_date or extras) else 0
+        avail = c.width - 2 - side
+        big = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8")]
+        fonts = [f for f in big if f.line_height <= c.height - 2] or [f46]
+        font, _ = fit_text(f"{self.hour_text(now)}:{now.minute:02d}", fonts, avail)
+        self._draw_time_pixel(c, 1 + avail // 2, (c.height - font.line_height) // 2, font.name, now, frame, time_color)
+        if not side:
+            return
+        col = c.sub(c.width - side, 0, side, c.height)
+        if extras and has_date:
+            self._pix_extras(col, (c.height // 2 - f46.line_height) // 2, now, accent)
+            self._draw_date(col, c.height // 2 + 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
+        elif extras:
+            self._pix_extras(col, (c.height - f46.line_height) // 2, now, accent)
+        else:
+            self._draw_date(col, (c.height - 8) // 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
+
+    def _pix_extras(self, c: Canvas, y: int, now: datetime, accent: Color, *, centered: bool = False) -> None:
+        """Seconds and/or AM/PM on one 4x6 row, right-aligned unless centered."""
+        f46 = get_font("4x6")
+        parts = [p for p in ((f"{now.second:02d}" if self.settings.show_seconds else ""), self.ampm(now)) if p]
+        if not parts:
+            return
+        row = " ".join(parts)
+        if centered:
+            c.text_centered(y, row, f46, accent)
+        else:
+            c.text(max(0, c.width - 1 - f46.measure(row)), y, row, f46, accent)
+
     # ---- dispatch -------------------------------------------------------------------
 
     @property
@@ -366,6 +431,20 @@ class ClockModule(Module[ClockSettings]):
     @layout(32, 64)
     def render_32x64(self, c: Canvas, frame: FrameInfo) -> None:
         (self._seg_32x64 if self._segment else self._pix_32x64)(c, frame)
+
+    @layout(128, 32)
+    def render_128x32(self, c: Canvas, frame: FrameInfo) -> None:
+        (self._seg_letterbox if self._segment else self._pix_letterbox)(c, frame)
+
+    @layout(128, 64)
+    def render_128x64(self, c: Canvas, frame: FrameInfo) -> None:
+        """The 64x32 layout doubled, which is what this panel used before 128x32 got a layout
+        of its own -- and still the best it can do, since the largest pixel font is 10x20 and
+        native-scale digits would use a third of the height. Registered explicitly because
+        layout resolution would otherwise reach for 128x32 here and centre it."""
+        small = Canvas(Size(64, 32))
+        (self._seg_64x32 if self._segment else self._pix_64x32)(small, frame)
+        c.blit(small.upscaled(2), 0, 0)
 
     @layout_fallback
     def render_any(self, c: Canvas, frame: FrameInfo) -> None:

@@ -50,7 +50,7 @@ class NewsSettings(ModuleSettings):
         3, ge=1, le=10, title="Headlines per turn", json_schema_extra={"x-group": "Layout", "x-order": 10}
     )
     seconds_per_headline: int = Field(
-        7, ge=3, le=30, title="Seconds per headline", json_schema_extra={"x-group": "Layout", "x-order": 20}
+        10, ge=3, le=60, title="Seconds per headline", json_schema_extra={"x-group": "Layout", "x-order": 20}
     )
     show_age: bool = Field(
         True, title="Show how old the item is", json_schema_extra={"x-group": "Layout", "x-order": 30}

@@ -189,7 +189,14 @@ class Module(Generic[S]):
         return self.info.default_fps
 
     def on_enter(self) -> None:
-        pass
+        """Called each time the rotation flips to this module, before its first frame.
+
+        An animation restarts here rather than resuming where its last turn left off: on a
+        panel showing a dozen modules, picking up a half-finished maze or a light-cycle round
+        that ended while the module was off screen just looks broken. Modules whose whole
+        output comes from the clock or from polled data have nothing to restart and can leave
+        this alone. Make sure ``info.default_duration_s`` is long enough for one full round.
+        """
 
     def on_exit(self) -> None:
         pass

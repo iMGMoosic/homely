@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+from PIL import ImageChops
 
 from homely.core.module import FrameInfo
 from homely.modules.weather.colors import NIGHT, NOON, SUNRISE, sky_gradient, temp_color
@@ -195,6 +196,31 @@ def test_golden_other_sizes(size, page, request):
     img = render(mod, size, now, 0.0 if page == "current" else 0.75)
     assert img.size == size.as_tuple()
     assert_golden(img, f"weather/{size}/{page}", request)
+
+
+@pytest.mark.parametrize(
+    ("size", "expected"),
+    [(Size(32, 32), 3), (Size(64, 32), 3), (Size(64, 64), 3), (Size(128, 32), 5), (Size(128, 64), 5)],
+    ids=str,
+)
+def test_forecast_days_defaults_to_five_on_wide_panels(size, expected):
+    mod = make_module(WeatherSettings(), size, NOW_DAY, fixture_forecast())
+    assert mod.forecast_days() == expected
+    # An explicit setting always wins over the automatic choice.
+    assert make_module(WeatherSettings(forecast_days=2), size, NOW_DAY, fixture_forecast()).forecast_days() == 2
+
+
+@pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
+def test_feels_like_is_drawn_at_every_size(size):
+    """It used to be drawn only by the 64x64 layout, so on any other panel the setting did
+    nothing at all."""
+    fc = fixture_forecast()
+    assert round(fc.current.feels_like) != round(fc.current.temp)  # otherwise there is nothing to show
+    off = render(make_module(WeatherSettings(show_feels_like=False), size, NOW_DAY, fc), size, NOW_DAY)
+    on = render(make_module(WeatherSettings(show_feels_like=True), size, NOW_DAY, fc), size, NOW_DAY)
+    if size.w < 48 and size.h < 48:
+        return  # too small for a second line of text; the layouts skip it by design
+    assert ImageChops.difference(off, on).getbbox() is not None, size
 
 
 def _status_frame() -> FrameInfo:

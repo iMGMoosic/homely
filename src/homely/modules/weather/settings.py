@@ -24,7 +24,12 @@ class WeatherSettings(ModuleSettings):
         json_schema_extra={"x-group": "Layout", "x-order": 10},
     )
     forecast_days: int = Field(
-        3, ge=1, le=5, title="Forecast days", json_schema_extra={"x-group": "Layout", "x-order": 20}
+        0,
+        ge=0,
+        le=5,
+        title="Forecast days",
+        description="0 = automatic: 5 days on panels 96 px or wider, 3 on smaller ones",
+        json_schema_extra={"x-group": "Layout", "x-order": 20},
     )
     show_condition: bool = Field(
         True, title="Show condition text", json_schema_extra={"x-group": "Layout", "x-order": 30}

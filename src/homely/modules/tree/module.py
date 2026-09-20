@@ -18,6 +18,21 @@ from homely.render.color import Color, dim, lerp, parse_color
 from homely.render.layout import layout_fallback
 from homely.render.size import Size
 
+# Leaf stamps, as pixel offsets from a leaf's top-left corner. Single pixels vanish on a real
+# panel, so even the smallest leaf is a 2x2 block; the bigger ones are rounded off at the corners
+# so a canopy reads as foliage rather than as a grid of squares.
+LEAF_SHAPES: dict[int, tuple[tuple[int, int], ...]] = {
+    1: ((0, 0),),
+    2: ((0, 0), (1, 0), (0, 1), (1, 1)),
+    3: ((1, 0), (0, 1), (1, 1), (2, 1), (1, 2), (2, 2)),
+    4: (
+        (1, 0), (2, 0),
+        (0, 1), (1, 1), (2, 1), (3, 1),
+        (0, 2), (1, 2), (2, 2), (3, 2),
+        (1, 3), (2, 3),
+    ),
+}  # fmt: skip
+
 
 class Phase(Enum):
     GROW = "grow"
@@ -68,9 +83,16 @@ class TreeModule(Module[TreeSettings]):
 
     # ---- setup ---------------------------------------------------------------------------------
 
+    def _leaf_px(self, size: Size) -> int:
+        if self.settings.leaf_size:
+            return self.settings.leaf_size
+        small = min(size.w, size.h)
+        return 2 if small < 48 else (3 if small < 96 else 4)
+
     def _reset(self, size: Size) -> None:
         w, h = size.w, size.h
         self.size = size
+        self.leaf_px = self._leaf_px(size)
         scale = min(w, h) / 64
         self.seg = max(1.5, 2.2 * scale)  # branch segment length
         self.attract_r = self.seg * 6
@@ -105,6 +127,8 @@ class TreeModule(Module[TreeSettings]):
         self._season = 0.0
         self._fade = 1.0
         self.ground = ground
+        # Where a falling leaf comes to rest, so the bottom of its stamp sits on the ground.
+        self._land_y = ground - (self.leaf_px - 1 - (self.leaf_px - 1) // 2)
 
     # ---- growth (space colonization) --------------------------------------------------------------
 
@@ -154,8 +178,10 @@ class TreeModule(Module[TreeSettings]):
     def _bud_leaves(self) -> None:
         leaf = parse_color(self.settings.leaf_color)
         tips = [n for n in self.nodes if not n.children and n.parent is not None]
+        # Fewer leaves once each one is a fat stamp, or the canopy turns into a solid slab.
+        per_tip = 1 if self.leaf_px >= 4 or self.size.w < 64 else 2
         for n in tips:
-            for _ in range(2 if self.size.w >= 64 else 1):
+            for _ in range(per_tip):
                 jitter = self.seg * 0.9
                 self.leaves.append(
                     Leaf(
@@ -204,8 +230,8 @@ class TreeModule(Module[TreeSettings]):
                 lf.vy = min(30, lf.vy + 20 * dt)
                 lf.x += lf.vx * dt + math.sin(self._timer * 3 + lf.born) * 4 * dt
                 lf.y += lf.vy * dt
-                if lf.y >= self.ground:
-                    lf.y, lf.landed = self.ground, True
+                if lf.y >= self._land_y:
+                    lf.y, lf.landed = self._land_y, True
             if self._timer >= 5.0:
                 self._phase, self._timer = Phase.FADE, 0.0
         else:
@@ -216,6 +242,9 @@ class TreeModule(Module[TreeSettings]):
 
     async def on_settings_changed(self, settings: TreeSettings) -> None:
         self.settings = settings
+        self._reset(self.ctx.size)
+
+    def on_enter(self) -> None:
         self._reset(self.ctx.size)
 
     @layout_fallback
@@ -238,6 +267,8 @@ class TreeModule(Module[TreeSettings]):
             draw.line((ox + p.x, oy + p.y, ox + n.x, oy + n.y), fill=col, width=width)
         autumn = parse_color(self.settings.autumn_color)
         show_t = self._timer if self._phase is Phase.LEAF else 99.0
+        shape = LEAF_SHAPES[self.leaf_px]
+        off = (self.leaf_px - 1) // 2
         for lf in self.leaves:
             if self._phase is Phase.LEAF and lf.born > show_t:
                 continue
@@ -248,6 +279,9 @@ class TreeModule(Module[TreeSettings]):
             )
             if lf.landed:
                 col = dim(col, 0.55)
-            c.pixel(int(lf.x), int(lf.y), dim(col, self._fade))
+            col = dim(col, self._fade)
+            lx, ly = int(lf.x) - off, int(lf.y) - off
+            for dx, dy in shape:
+                c.pixel(lx + dx, ly + dy, col)
         # ground line
         c.hline(0, c.height - 1, c.width, dim((60, 90, 40), self._fade))

@@ -125,9 +125,11 @@ class MazeModule(Module[MazeSettings]):
         cols = self.rng.randint(s.min_cells, max_cols)
         rows = self.rng.randint(s.min_cells, max_rows)
         self.grid = Grid(rows, cols, self.rng)
-        self.cell_w, self.cell_h = w // cols, h // rows
-        self.ox = (w - cols * self.cell_w) // 2
-        self.oy = (h - rows * self.cell_h) // 2
+        # Column and row boundaries, in pixels. Cells are not all the same size: the leftover
+        # pixels are spread across them so the outer walls always land on the panel edges,
+        # rather than leaving an unlit margin around a maze of uniform cells.
+        self._xs = [w * k // cols for k in range(cols + 1)]
+        self._ys = [h * k // rows for k in range(rows + 1)]
         self._img = Image.new("RGB", (w, h), (0, 0, 0))
         self.wall_pixels = self._wall_pixels()
         self.path_pixels = self._path_pixels(self.grid.shortest_path())
@@ -137,29 +139,30 @@ class MazeModule(Module[MazeSettings]):
         self._timer = 0.0
 
     def _wall_pixels(self) -> list[tuple[int, int]]:
-        g, cw, ch = self.grid, self.cell_w, self.cell_h
+        g, xs, ys = self.grid, self._xs, self._ys
         px: list[tuple[int, int]] = []
-        px.extend((x, self.oy) for x in range(self.ox, self.ox + g.cols * cw))  # top border
+        px.extend((x, 0) for x in range(xs[-1]))  # top border
         for r in range(g.rows):
+            y0, y1 = ys[r], ys[r + 1]
             for c in range(g.cols):
-                x, y = self.ox + c * cw, self.oy + r * ch
+                x0, x1 = xs[c], xs[c + 1]
                 if c == 0 and r != g.start_row:
-                    px.extend((self.ox, yy) for yy in range(y, y + ch))
+                    px.extend((0, yy) for yy in range(y0, y1))
                 if g.bottom[r][c]:
-                    px.extend((xx, y + ch - 1) for xx in range(x, x + cw))
+                    px.extend((xx, y1 - 1) for xx in range(x0, x1))
                 if g.right[r][c]:
-                    px.extend((x + cw - 1, yy) for yy in range(y, y + ch))
+                    px.extend((x1 - 1, yy) for yy in range(y0, y1))
         return px
 
     def _center(self, cell: Cell) -> tuple[int, int]:
         r, c = cell
-        return self.ox + c * self.cell_w + self.cell_w // 2, self.oy + r * self.cell_h + self.cell_h // 2
+        return (self._xs[c] + self._xs[c + 1]) // 2, (self._ys[r] + self._ys[r + 1]) // 2
 
     def _path_pixels(self, path: list[Cell]) -> list[tuple[int, int]]:
         px: list[tuple[int, int]] = []
         # lead in from the left edge and out through the right edge like the prototype's open walls
         sx, sy = self._center(path[0])
-        px.extend((x, sy) for x in range(self.ox, sx))
+        px.extend((x, sy) for x in range(sx))
         for a, b in itertools.pairwise(path):
             (x1, y1), (x2, y2) = self._center(a), self._center(b)
             dx, dy = x2 - x1, y2 - y1
@@ -167,7 +170,7 @@ class MazeModule(Module[MazeSettings]):
             for step in range(dist + 1):
                 px.append((int(x1 + dx * step / dist), int(y1 + dy * step / dist)))
         ex, ey = self._center(path[-1])
-        px.extend((x, ey) for x in range(ex, self.ox + self.grid.cols * self.cell_w))
+        px.extend((x, ey) for x in range(ex, self._xs[-1]))
         return px
 
     # ---- animation -------------------------------------------------------------------------
@@ -203,6 +206,9 @@ class MazeModule(Module[MazeSettings]):
 
     async def on_settings_changed(self, settings: MazeSettings) -> None:
         self.settings = settings
+        self._reset(self.ctx.size)
+
+    def on_enter(self) -> None:
         self._reset(self.ctx.size)
 
     @layout_fallback

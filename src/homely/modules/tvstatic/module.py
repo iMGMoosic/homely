@@ -42,12 +42,19 @@ class TvStaticModule(Module[TvStaticSettings]):
     def __init__(self, ctx: ModuleContext, settings: TvStaticSettings, *, seed: int | None = None) -> None:
         super().__init__(ctx, settings)
         self.rng = random.Random(seed)
+        self._scan: Image.Image | None = None
+        self._reset()
+
+    def _reset(self) -> None:
         self.mode = Mode.STATIC
         self.timer = 0.0
-        self.next_flip = self.rng.uniform(settings.flip_every_s * 0.6, settings.flip_every_s * 1.4)
+        self.next_flip = self.rng.uniform(self.settings.flip_every_s * 0.6, self.settings.flip_every_s * 1.4)
         self.bar_y = 0.0
         self.channel = 0
-        self._scan: Image.Image | None = None
+
+    def on_enter(self) -> None:
+        # Every turn tunes in fresh, rather than resuming a half-finished channel flip.
+        self._reset()
 
     def _scanlines(self, size: Size) -> Image.Image:
         if self._scan is None or self._scan.size != size.as_tuple():

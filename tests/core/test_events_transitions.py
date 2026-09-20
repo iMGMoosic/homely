@@ -1,11 +1,14 @@
 import asyncio
 import queue
+from typing import get_args
 
+import pytest
 from PIL import Image
 
+from homely.config.models import TransitionName
 from homely.core.events import ConfigChanged, EventBus, ModuleError
 from homely.core.takeover import Takeover, TakeoverStack
-from homely.core.transitions import Slide, make_transition
+from homely.core.transitions import TRANSITION_NAMES, RandomTransition, Slide, make_transition
 
 
 def test_bus_callback_and_threadsafe_queue():
@@ -41,6 +44,43 @@ def test_slide_and_factory():
     assert make_transition("cut", 1).duration == 0
     assert make_transition("fade", 0.4).duration == 0.4
     assert make_transition("slide_up", 0.3).name == "slide_up"
+
+
+def test_transition_names_match_the_config_schema():
+    """Anything the config offers has to be something make_transition can build."""
+    assert get_args(TransitionName) == TRANSITION_NAMES
+    for name in TRANSITION_NAMES:
+        assert make_transition(name, 0.4) is not None
+    with pytest.raises(ValueError, match="Unknown transition"):
+        make_transition("teleport", 0.4)
+
+
+@pytest.mark.parametrize("name", [n for n in TRANSITION_NAMES if n != "cut"])
+@pytest.mark.parametrize("size", [(128, 32), (64, 64), (32, 128)], ids=str)
+def test_every_transition_lands_on_the_next_frame(name, size):
+    prev = Image.new("RGB", size, (255, 0, 0))
+    nxt = Image.new("RGB", size, (0, 0, 255))
+    trans = make_transition(name, 0.4)
+    for p in (0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0):
+        out = trans.blend(prev, nxt, p)
+        assert out.size == size and out.mode == "RGB"
+    # By the end the old frame is gone from every corner, so no module leaves a sliver behind.
+    end = trans.blend(prev, nxt, 1.0)
+    w, h = size
+    assert {end.getpixel(c) for c in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))} == {(0, 0, 255)}
+
+
+def test_random_transition_changes_between_changeovers():
+    prev = Image.new("RGB", (32, 32), (255, 0, 0))
+    nxt = Image.new("RGB", (32, 32), (0, 0, 255))
+    trans = make_transition("random", 0.4)
+    assert isinstance(trans, RandomTransition)
+    picked = []
+    for _ in range(25):
+        for p in (0.1, 0.5, 0.9, 1.0):  # one full changeover; p then drops for the next one
+            trans.blend(prev, nxt, p)
+        picked.append(trans._current.name)
+    assert len(set(picked)) > 3, picked
 
 
 def test_takeover_stack_priority_and_expiry():

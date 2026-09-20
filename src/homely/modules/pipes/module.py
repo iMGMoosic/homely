@@ -62,7 +62,7 @@ class PipesModule(Module[PipesSettings]):
         description="Idle animation: the classic 3D pipes screensaver, tube by tube.",
         tier=Tier.NEED,
         icon="pipes",
-        default_duration_s=90,
+        default_duration_s=120,
         default_fps=30,
         min_size=Size(32, 32),
     )
@@ -223,6 +223,9 @@ class PipesModule(Module[PipesSettings]):
 
     async def on_settings_changed(self, settings: PipesSettings) -> None:
         self.settings = settings
+        self._reset(self.ctx.size)
+
+    def on_enter(self) -> None:
         self._reset(self.ctx.size)
 
     @layout_fallback

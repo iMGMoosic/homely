@@ -20,6 +20,26 @@ or `~/.local/state/homely`.
 | `brightness` | level and night schedule | live |
 | `modules` | ordered list of `{instance_id, module, enabled, duration_s, settings}` | live |
 
+## Transitions
+
+`rotation.transition` picks how one module gives way to the next, over
+`rotation.transition_duration_s`:
+
+| Name | What it does |
+|---|---|
+| `cut` | no transition (also what any transition does at duration 0) |
+| `fade` | cross-fade |
+| `fade_black` | dips to black halfway, then comes back up on the new module |
+| `slide_left` / `slide_right` / `slide_up` / `slide_down` | the new frame pushes the old one off |
+| `wipe_left` / `wipe_right` / `wipe_up` / `wipe_down` | a hard edge sweeps across, uncovering the new frame |
+| `curtain_h` / `curtain_v` | the new frame opens out from the middle |
+| `blinds` | venetian blinds: bands widen until the new frame covers everything |
+| `iris` | a circle opens from the centre |
+| `dissolve` | pixels swap over in a fixed random order |
+| `pixelate` | the old frame coarsens into fat pixels, the new one resolves out of them |
+| `glitch` | rows tear sideways and the two frames interleave |
+| `random` | a different one of the above every changeover |
+
 ## CLI helpers
 
 ```bash

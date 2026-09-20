@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from homely.core.module import FrameInfo, Module, ModuleContext, ModuleInfo, Tier
 from homely.data.slot import DataSlot
 from homely.modules.weather.colors import NIGHT, sky_gradient, temp_color
-from homely.modules.weather.providers import PROVIDERS, Daily, Forecast, WeatherProvider
+from homely.modules.weather.providers import PROVIDERS, Current, Daily, Forecast, WeatherProvider
 from homely.modules.weather.settings import WeatherSettings
 from homely.modules.weather.solar import SunTimes, sun_times
 from homely.modules.weather.wmo import icon_for, label_for, short_label_for
@@ -29,6 +29,7 @@ HI_COLOR: Color = (255, 150, 90)
 LO_COLOR: Color = (120, 190, 255)
 BAR_COLOR: Color = (60, 150, 255)
 STRIP_W = 2
+WIDE_PANEL_W = 96  # at or above this width the automatic forecast shows five days
 
 
 def deg(t: float) -> str:
@@ -57,7 +58,7 @@ class WeatherModule(Module[WeatherSettings]):
     # ---- data ----------------------------------------------------------------------
 
     async def setup(self) -> None:
-        self._provider = PROVIDERS[self.settings.provider](self.ctx.http, forecast_days=self.settings.forecast_days + 1)
+        self._provider = PROVIDERS[self.settings.provider](self.ctx.http, forecast_days=self.forecast_days() + 1)
         cached = self.ctx.cache.get(CACHE_KEY, max_age_s=6 * 3600)
         if cached:
             try:
@@ -70,7 +71,7 @@ class WeatherModule(Module[WeatherSettings]):
         refetch = (settings.provider, settings.forecast_days) != (self.settings.provider, self.settings.forecast_days)
         self.settings = settings
         if refetch and self._provider is not None:
-            self._provider = PROVIDERS[settings.provider](self.ctx.http, forecast_days=settings.forecast_days + 1)
+            self._provider = PROVIDERS[settings.provider](self.ctx.http, forecast_days=self.forecast_days() + 1)
             for p in self.ctx.pollers:
                 p.trigger()
         self.ctx.invalidate()
@@ -191,9 +192,19 @@ class WeatherModule(Module[WeatherSettings]):
         self._stale_dot(c, frame)
         return fc, c.sub(0, 0, self._content_width(c), c.height), now
 
+    def forecast_days(self) -> int:
+        """Configured day count, or the automatic one: wide boards have room for five."""
+        return self.settings.forecast_days or (5 if self.ctx.size.w >= WIDE_PANEL_W else 3)
+
     def _upcoming_days(self, fc: Forecast, now: datetime) -> list[Daily]:
         days = [d for d in fc.daily if d.date.date() > now.date()]
-        return days[: self.settings.forecast_days]
+        return days[: self.forecast_days()]
+
+    def _feels_text(self, cur: Current) -> str:
+        """ "feels 68°", or "" when it is off or would just repeat the temperature."""
+        if not self.settings.show_feels_like or round(cur.feels_like) == round(cur.temp):
+            return ""
+        return f"feels {deg(cur.feels_like)}"
 
     def _text_color(self) -> Color:
         return parse_color(self.settings.text_color)
@@ -233,8 +244,9 @@ class WeatherModule(Module[WeatherSettings]):
         tx = 28 + (area.width - 28 - font.measure(temp)) // 2
         area.text(tx, 4 + (20 - font.line_height) // 2, temp, font, text)
         y = 29
-        if self.settings.show_feels_like and round(cur.feels_like) != round(cur.temp):
-            area.text_centered(y, f"feels {deg(cur.feels_like)}", get_font("4x6"), dim(text, 0.7))
+        feels = self._feels_text(cur)
+        if feels:
+            area.text_centered(y, feels, get_font("4x6"), dim(text, 0.7))
             y += 8
         if self.settings.show_condition:
             f, label = fit_text(
@@ -337,12 +349,18 @@ class WeatherModule(Module[WeatherSettings]):
         small = get_font("4x6") if w >= 40 else get_font("tom-thumb")
         tiny = small.name == "tom-thumb"
         label = label_for(cur.code, cur.is_day) if w >= 60 else short_label_for(cur.code, cur.is_day)
+        feels = self._feels_text(cur)
         spare = right_w - font.measure(temp) - 4
         if spare >= 40:
             # Wide (128x32, 128x64): temp next to the icon, condition + H/L in a column to the right.
             ty = 1 + max(0, (icon - font.line_height) // 2)
             area.text(right_x, ty, temp, font, text)
-            col_x = right_x + font.measure(temp) + 6
+            # The feels-like line sits under the temperature, and widens its column so the
+            # condition text next to it is never overdrawn.
+            show_feels = bool(feels) and h - (ty + font.line_height) >= small.line_height + 1
+            if show_feels:
+                area.text(right_x, ty + font.line_height + 1, feels, small, dim(text, 0.7))
+            col_x = right_x + max(font.measure(temp), small.measure(feels) if show_feels else 0) + 6
             col_w = w - col_x
             big = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8")]
             cf, ctext = fit_text(label, [f for f in big if f.line_height <= (h - 4) // 2] or [small], col_w)
@@ -366,6 +384,10 @@ class WeatherModule(Module[WeatherSettings]):
             area.text(x, y, hi, small, HI_COLOR)
             area.text(x + small.measure(hi) + 4, y, lo, small, LO_COLOR)
             y += small.line_height + 1
+        if feels and h - y >= small.line_height:
+            f, ftext = fit_text(feels, [small, get_font("tom-thumb")], w)
+            area.text_centered(y, ftext, f, dim(text, 0.7))
+            y += f.line_height + 1
         if self.settings.show_condition and h - y >= small.line_height:
             f, label = fit_text(label, [small, get_font("tom-thumb")], w)
             area.text_centered(y, label, f, text)
@@ -393,6 +415,10 @@ class WeatherModule(Module[WeatherSettings]):
                 area.text_centered(y, hi, small, HI_COLOR)
                 area.text_centered(y + 7, lo, small, LO_COLOR)
                 y += 15
+        feels = self._feels_text(cur)
+        if feels and h - y >= small.line_height:
+            area.text_centered(y, feels, small, dim(text, 0.7))
+            y += small.line_height + 1
         if self.settings.show_condition and h - y >= 6:
             f, label = fit_text(short_label_for(cur.code, cur.is_day), [small, get_font("tom-thumb")], w)
             area.text_centered(y, label, f, text)

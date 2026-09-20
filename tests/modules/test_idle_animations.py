@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 
 import pytest
 
@@ -60,7 +61,29 @@ def test_maze_draws_walls_then_path_then_restarts():
 
 def test_maze_sizes_respect_min_cell():
     mod = MazeModule(make_ctx(Size(32, 32)), MazeSettings(min_cell_px=8, min_cells=2), seed=2)
-    assert mod.grid.cols <= 4 and mod.grid.rows <= 4 and mod.cell_w >= 8
+    widths = [b - a for a, b in itertools.pairwise(mod._xs)]
+    assert mod.grid.cols <= 4 and mod.grid.rows <= 4 and min(widths) >= 8
+
+
+@pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
+def test_maze_border_reaches_every_edge(size):
+    """The maze is stretched to the panel, so no unlit margin is left around it."""
+    for seed in range(6):
+        mod = MazeModule(make_ctx(size), MazeSettings(draw_speed=2000, solve_speed=10), seed=seed)
+        assert (mod._xs[0], mod._ys[0]) == (0, 0)
+        assert (mod._xs[-1], mod._ys[-1]) == (size.w, size.h)
+        img = run_frames(mod, size, 300)  # long enough for every wall pixel to be drawn
+        assert mod._phase is not Phase.WALLS
+        px = img.load()
+        top = [x for x in range(size.w) if px[x, 0] != (0, 0, 0)]
+        bottom = [x for x in range(size.w) if px[x, size.h - 1] != (0, 0, 0)]
+        left = [y for y in range(size.h) if px[0, y] != (0, 0, 0)]
+        right = [y for y in range(size.h) if px[size.w - 1, y] != (0, 0, 0)]
+        assert len(top) == size.w, (size, seed, "top")
+        # The other three edges are solid apart from the entrance and exit gaps.
+        assert len(bottom) == size.w, (size, seed, "bottom")
+        assert len(left) >= size.h - (size.h // mod.grid.rows + 1), (size, seed, "left")
+        assert len(right) >= size.h - (size.h // mod.grid.rows + 1), (size, seed, "right")
 
 
 @pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
@@ -88,6 +111,28 @@ def test_qix_moves_and_keeps_trail_bounded():
         for p in (q.a, q.b):
             assert 0 <= p.x <= 63 and 0 <= p.y <= 63
     assert lit(img) > 20
+
+
+@pytest.mark.parametrize("wander", [20, 45, 80])
+def test_qix_wander_breaks_the_bounce_cycle(wander):
+    """A plain reflection keeps |vx| and |vy| forever, so the heading only ever takes four
+    values and a wide panel shows the same up-down, left-right path over and over."""
+    size = Size(128, 32)
+
+    def headings(w: int) -> set[int]:
+        mod = QixModule(make_ctx(size), QixSettings(wander=w), seed=5)
+        canvas = Canvas(size)
+        seen = set()
+        for i in range(30 * 40):  # 40 s
+            canvas.clear()
+            mod.render(canvas, frame(1 / 30, i / 30))
+            for q in mod.qixes:
+                for p in (q.a, q.b):
+                    seen.add(int(math.degrees(math.atan2(p.vy, p.vx)) // 10))
+        return seen
+
+    assert len(headings(0)) <= 12  # the old behaviour: a handful of headings, cycling
+    assert len(headings(wander)) >= 24
 
 
 @pytest.mark.parametrize("mode", ["rainbow", "single", "duo"])
