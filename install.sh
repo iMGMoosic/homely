@@ -12,7 +12,7 @@
 #   --uninstall       remove the service and /opt/homely (add --purge to also remove config/state)
 set -euo pipefail
 
-SCRIPT_REV="2026-09-19.4"          # bump when install.sh changes; printed at startup
+SCRIPT_REV="2026-09-19.5"          # bump when install.sh changes; printed at startup
 REPO="imgmoosic/homely"
 MATRIX_REPO="https://github.com/hzeller/rpi-rgb-led-matrix"
 MATRIX_REF="51d3231e370593b60952b2c3b18d2e3802329f18"   # pinned hzeller commit (2026-09-07T18:36:32Z)
@@ -186,9 +186,16 @@ else
     WHEEL_URL=$(fetch "$API/tags/v$HOMELY_VERSION" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -n1)
     WHEEL_URL=$(clean "$WHEEL_URL")
     [ -n "$WHEEL_URL" ] || die "release v$HOMELY_VERSION has no wheel attached; try --from-source"
+    # Keep the published filename: pip rejects a wheel whose name is not
+    # name-version-python-abi-platform.whl ("Invalid wheel filename (wrong number of parts)").
+    WHEEL_NAME=$(basename "$WHEEL_URL")
+    case "$WHEEL_NAME" in
+      *-*-*-*-*.whl) : ;;
+      *) die "unexpected wheel filename from the release: $WHEEL_NAME" ;;
+    esac
     TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-    fetch "$WHEEL_URL" -o "$TMP/homely.whl"
-    "$VENV/bin/pip" install -q --upgrade "$TMP/homely.whl"
+    fetch "$WHEEL_URL" -o "$TMP/$WHEEL_NAME"
+    "$VENV/bin/pip" install -q --upgrade "$TMP/$WHEEL_NAME"
   fi
 fi
 "$VENV/bin/homely" version
