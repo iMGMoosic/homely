@@ -6,6 +6,7 @@ temperature; a strip on the right edge shows the sky color across the day with a
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from homely.core.module import FrameInfo, Module, ModuleContext, ModuleInfo, Tier
@@ -18,6 +19,7 @@ from homely.modules.weather.wmo import icon_for, label_for, short_label_for
 from homely.render.canvas import Canvas
 from homely.render.color import AMBER, Color, dim, lerp, parse_color
 from homely.render.fonts import get_font
+from homely.render.fonts.bdf import BitmapFont
 from homely.render.layout import layout, layout_fallback
 from homely.render.size import Size
 from homely.render.text import fit_text
@@ -201,8 +203,13 @@ class WeatherModule(Module[WeatherSettings]):
         return days[: self.forecast_days()]
 
     def _feels_text(self, cur: Current) -> str:
-        """ "feels 68°", or "" when it is off or would just repeat the temperature."""
-        if not self.settings.show_feels_like or round(cur.feels_like) == round(cur.temp):
+        """ "feels 68°" when the setting is on, else "".
+
+        This used to hide itself when the apparent temperature rounded to the same number as
+        the temperature, which is most mild days -- so turning the setting on looked like it
+        did nothing at all. If you asked for the reading you get the reading.
+        """
+        if not self.settings.show_feels_like:
             return ""
         return f"feels {deg(cur.feels_like)}"
 
@@ -363,7 +370,11 @@ class WeatherModule(Module[WeatherSettings]):
             col_x = right_x + max(font.measure(temp), small.measure(feels) if show_feels else 0) + 6
             col_w = w - col_x
             big = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8")]
-            cf, ctext = fit_text(label, [f for f in big if f.line_height <= (h - 4) // 2] or [small], col_w)
+            cf, ctext = _fit_label(
+                (label, short_label_for(cur.code, cur.is_day)),
+                [f for f in big if f.line_height <= (h - 4) // 2] or [small],
+                col_w,
+            )
             hl = get_font("6x10") if h >= 48 else small
             block_h = cf.line_height + 2 + hl.line_height
             cy = max(0, (h - block_h) // 2)
@@ -426,6 +437,19 @@ class WeatherModule(Module[WeatherSettings]):
         days = self._upcoming_days(fc, now)
         if days and h - y >= 40:
             self._forecast_rows(area.sub(0, y, w, h - y), fc, now, days)
+
+
+def _fit_label(variants: Sequence[str], fonts: Sequence[BitmapFont], max_w: int) -> tuple[BitmapFont, str]:
+    """First variant that fits whole, in the largest font that takes it.
+
+    Shortening "Partly cloudy" to "Partly" reads better than letting fit_text clip the long
+    one to "Partly clou...", which is what a narrow condition column used to show.
+    """
+    for variant in variants:
+        for font in fonts:
+            if font.measure(variant) <= max_w:
+                return font, variant
+    return fit_text(variants[-1], fonts, max_w)  # nothing fits: truncate the shortest
 
 
 def _hilo(tmax: float, tmin: float, tiny: bool) -> tuple[str, str]:

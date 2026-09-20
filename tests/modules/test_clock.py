@@ -69,6 +69,27 @@ def test_128x32_uses_more_than_the_middle_64_pixels(style):
     assert min(lit_x) < margin or max(lit_x) >= size.w - margin
 
 
+@pytest.mark.parametrize("style", ["segment", "pixel"])
+def test_128x32_puts_the_seconds_beside_the_time(style):
+    """Seconds belong next to the digits, not stranded in the right-hand column."""
+    size = Size(128, 32)
+    accent = "#00A8FF"
+    settings = ClockSettings(style=style, show_seconds=True, accent_color=accent)
+    img, _ = render(settings, size=size)
+    want = tuple(int(accent[i : i + 2], 16) for i in (1, 3, 5))
+    accent_x = [x for x in range(size.w) for y in range(size.h) if img.getpixel((x, y)) == want]
+    time_x = [
+        x
+        for x in range(size.w)
+        for y in range(size.h)
+        if img.getpixel((x, y)) == (255, 255, 255)  # the default time color
+    ]
+    assert accent_x and time_x
+    # The seconds sit just past the last digit, well left of the date column.
+    assert min(accent_x) - max(time_x) <= 6
+    assert max(accent_x) < size.w - 32
+
+
 def test_helpers_and_fps():
     _, mod = render(ClockSettings())
     assert mod.fps() == 2

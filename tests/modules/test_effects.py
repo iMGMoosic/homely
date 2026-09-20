@@ -107,6 +107,41 @@ def test_lava_blobs_stay_on_screen():
     assert lit(img) == 64 * 64  # background is never pure black
 
 
+def test_lava_starts_as_one_lump_at_the_bottom():
+    size = Size(64, 64)
+    mod = LavaLampModule(make_ctx(size), LavaLampSettings(), seed=3)
+    mod.on_enter()
+    run_frames(mod, size, 2)
+    # Everything pooled low and close together, not scattered over the panel.
+    assert all(b.y > size.h * 0.7 for b in mod.blobs), [b.y for b in mod.blobs]
+    span = max(b.x for b in mod.blobs) - min(b.x for b in mod.blobs)
+    assert span <= size.w * 0.45, span
+
+
+def test_lava_circulates_up_one_side_and_down_the_other():
+    """A lava lamp is a convection loop, not each blob bobbing on its own sine wave."""
+    size = Size(64, 64)
+    mod = LavaLampModule(make_ctx(size), LavaLampSettings(blobs=4, speed=100), seed=3)
+    mod.on_enter()
+    blob = mod.blobs[0]
+    track: list[tuple[float, float]] = []
+    canvas = Canvas(size)
+    for i in range(30 * 60):
+        canvas.clear()
+        mod.render(canvas, frame(1 / 30, i / 30))
+        track.append((blob.x, blob.y))
+    up_x, down_x = blob.up_x, blob.down_x
+    # It climbs on the up side and sinks on the down side, never the reverse.
+    climbing = [x for (x, y), (_, prev_y) in zip(track[1:], track, strict=False) if y < prev_y - 0.05]
+    sinking = [x for (x, y), (_, prev_y) in zip(track[1:], track, strict=False) if y > prev_y + 0.05]
+    assert climbing and sinking
+    assert abs(sum(climbing) / len(climbing) - up_x) < abs(sum(climbing) / len(climbing) - down_x)
+    assert abs(sum(sinking) / len(sinking) - down_x) < abs(sum(sinking) / len(sinking) - up_x)
+    # And it goes all the way round rather than hovering at one height.
+    ys = [y for _, y in track]
+    assert max(ys) - min(ys) > size.h * 0.5
+
+
 @pytest.mark.parametrize("palette", ["classic", "ocean", "toxic", "sunset"])
 def test_golden_lava_palettes(palette, request):
     mod = LavaLampModule(make_ctx(Size(64, 64)), LavaLampSettings(palette=palette), seed=5)

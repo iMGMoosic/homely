@@ -268,29 +268,34 @@ class ClockModule(Module[ClockSettings]):
 
         Without a layout of their own these reuse the 64x32 one, and since a 128-wide panel is
         not an even multiple of it in both axes the small layout is centred rather than scaled,
-        leaving the outer thirds of the board dark. Here the time fills the left and everything
-        else stacks into a column on the right.
+        leaving the outer thirds of the board dark.
+
+        Left to right: the time, then AM/PM over the seconds pressed right up against the last
+        digit the way a desk clock reads, then the date in its own column. The seconds used to
+        live in that right-hand column, which stranded them at the far end of the board.
         """
         now = self.now(frame)
         time_color, date_color, accent = self.colors()
-        has_date = self.settings.show_date
-        extras = self.settings.show_seconds or bool(self.ampm(now))
-        side = min(48, c.width // 3) if (has_date or extras) else 0
-        avail = c.width - 2 - side
-        font = fit_segment_font("88:88", avail, c.height - 2)
-        x = 1 + (avail - font.measure("88:88")) // 2
-        self._draw_time_segments(c, x, (c.height - font.h) // 2, font, now, frame, time_color)
-        if not side:
-            return
-        col = c.sub(c.width - side, 0, side, c.height)
-        seg_h = min(10, c.height // 3)
-        if extras and has_date:
-            self._seconds_ampm_row(col, (c.height // 2 - seg_h) // 2, side - 1, now, accent, seg_h)
-            self._draw_date(col, c.height // 2 + 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
-        elif extras:
-            self._seconds_ampm_row(col, (c.height - seg_h) // 2, side - 1, now, accent, seg_h)
-        else:
-            self._draw_date(col, (c.height - 8) // 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
+        ampm = self.ampm(now)
+        f46 = get_font("4x6")
+        sec_h = min(12, max(5, c.height // 2 - 4))
+        sec_font = fit_segment_font("88", c.width // 4, sec_h) if self.settings.show_seconds else None
+        stack_w = max(sec_font.measure("88") if sec_font else 0, f46.measure(ampm) if ampm else 0)
+        stack_w += 3 if stack_w else 0
+        date_w = min(48, c.width // 3) if self.settings.show_date else 0
+        font = fit_segment_font("88:88", c.width - 2 - stack_w - date_w, c.height - 2)
+        y = (c.height - font.h) // 2
+        # Centre the time and its stack in whatever is left of the date column, so a panel with
+        # the date turned off does not leave all its spare width on one side.
+        left = max(1, (c.width - date_w - font.measure("88:88") - stack_w) // 2)
+        x = left + self._draw_time_segments(c, left, y, font, now, frame, time_color) + 3
+        if ampm:
+            c.text(x, y, ampm, f46, accent)
+        if sec_font:
+            sec_font.draw(c, x, y + font.h - sec_font.h, f"{now.second:02d}", accent, off=self.ghost(accent))
+        if date_w:
+            col = c.sub(c.width - date_w, 0, date_w, c.height)
+            self._draw_date(col, (c.height - 8) // 2, now, ("6x10", "5x8", "4x6"), date_w - 1, date_color)
 
     # ---- pixel layouts ---------------------------------------------------------------
 
@@ -378,25 +383,29 @@ class ClockModule(Module[ClockSettings]):
         """Pixel-font counterpart to :meth:`_seg_letterbox`."""
         now = self.now(frame)
         time_color, date_color, accent = self.colors()
-        has_date = self.settings.show_date
-        extras = self.settings.show_seconds or bool(self.ampm(now))
+        ampm = self.ampm(now)
         f46 = get_font("4x6")
-        side = min(48, c.width // 3) if (has_date or extras) else 0
-        avail = c.width - 2 - side
+        secs = f"{now.second:02d}" if self.settings.show_seconds else ""
+        stack_w = max(f46.measure(secs), f46.measure(ampm))
+        stack_w += 3 if stack_w else 0
+        date_w = min(48, c.width // 3) if self.settings.show_date else 0
         big = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8")]
         fonts = [f for f in big if f.line_height <= c.height - 2] or [f46]
-        font, _ = fit_text(f"{self.hour_text(now)}:{now.minute:02d}", fonts, avail)
-        self._draw_time_pixel(c, 1 + avail // 2, (c.height - font.line_height) // 2, font.name, now, frame, time_color)
-        if not side:
-            return
-        col = c.sub(c.width - side, 0, side, c.height)
-        if extras and has_date:
-            self._pix_extras(col, (c.height // 2 - f46.line_height) // 2, now, accent)
-            self._draw_date(col, c.height // 2 + 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
-        elif extras:
-            self._pix_extras(col, (c.height - f46.line_height) // 2, now, accent)
-        else:
-            self._draw_date(col, (c.height - 8) // 2, now, ("6x10", "5x8", "4x6"), side - 1, date_color)
+        avail = c.width - 2 - stack_w - date_w
+        text = f"{self.hour_text(now)}:{now.minute:02d}"
+        font, _ = fit_text(text, fonts, avail)
+        y = (c.height - font.line_height) // 2
+        time_w = font.measure(text)
+        left = max(1, (c.width - date_w - time_w - stack_w) // 2)
+        _, right = self._draw_time_pixel(c, left + time_w // 2, y, font.name, now, frame, time_color)
+        x = right + 3
+        if ampm:
+            c.text(x, y, ampm, f46, accent)
+        if secs:
+            c.text(x, y + font.line_height - f46.line_height, secs, f46, accent)
+        if date_w:
+            col = c.sub(c.width - date_w, 0, date_w, c.height)
+            self._draw_date(col, (c.height - 8) // 2, now, ("6x10", "5x8", "4x6"), date_w - 1, date_color)
 
     def _pix_extras(self, c: Canvas, y: int, now: datetime, accent: Color, *, centered: bool = False) -> None:
         """Seconds and/or AM/PM on one 4x6 row, right-aligned unless centered."""
