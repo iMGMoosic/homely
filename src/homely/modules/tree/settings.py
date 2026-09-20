@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field
 
 from homely.core.module import ModuleSettings
@@ -21,6 +23,12 @@ class TreeSettings(ModuleSettings):
     )
     hold_s: float = Field(
         4.0, ge=0, le=30, title="Hold the full tree (seconds)", json_schema_extra={"x-group": "Tree", "x-order": 30}
+    )
+    leaf_size: Literal[0, 1, 2, 3, 4] = Field(
+        0,
+        title="Leaf size (pixels)",
+        description="0 = automatic, from the size of the panel",
+        json_schema_extra={"x-group": "Tree", "x-order": 40},
     )
     trunk_color: str = Field(
         "#6B4226",

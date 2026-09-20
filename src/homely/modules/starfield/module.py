@@ -78,9 +78,13 @@ class StarfieldModule(Module[StarfieldSettings]):
         self.cam = Camera(size.w, size.h, focal=min(size.w, size.h) * 0.9)
         self.stars = [self._spawn() for _ in range(self.settings.stars)]
         self.shooters = []
+        self._next_shooter = self.rng.uniform(2, 6)
 
     async def on_settings_changed(self, settings: StarfieldSettings) -> None:
         self.settings = settings
+        self._reset(self.ctx.size)
+
+    def on_enter(self) -> None:
         self._reset(self.ctx.size)
 
     def advance(self, dt: float, size: Size) -> None:

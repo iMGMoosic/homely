@@ -14,6 +14,10 @@ from homely.render.color import Color, dim, hsv, lerp, parse_color
 from homely.render.layout import layout_fallback
 from homely.render.size import Size
 
+MIN_BOUNCE_COS = 0.28  # a bounce always leaves the wall at least this steeply
+MAX_WANDER = 1.6  # radians per second of drift at wander = 100
+MAX_SPREAD = 1.0  # radians a bounce can be scattered by at wander = 100
+
 
 @dataclass
 class Point:
@@ -21,18 +25,53 @@ class Point:
     y: float
     vx: float
     vy: float
+    base_speed: float = 1.0
 
-    def step(self, dt: float, w: int, h: int, rng: random.Random) -> None:
+    def _steer(self, rng: random.Random, radians: float) -> None:
+        speed = math.hypot(self.vx, self.vy) or self.base_speed
+        angle = math.atan2(self.vy, self.vx) + rng.uniform(-radians, radians)
+        self.vx, self.vy = math.cos(angle) * speed, math.sin(angle) * speed
+
+    def _bounce(self, normal: tuple[int, int], rng: random.Random, spread: float) -> None:
+        """Reflect off a wall, then scatter: a plain reflection on a 128x32 panel settles into
+        the same up-down, left-right cycle within a few seconds."""
+        nx, ny = normal
+        if nx:
+            self.vx = abs(self.vx) * nx
+        else:
+            self.vy = abs(self.vy) * ny
+        self._steer(rng, spread)
+        # Keep enough of the velocity pointing away from the wall that the line does not crawl
+        # along the edge, and stop repeated bounces from compounding into a crawl or a blur.
+        speed = math.hypot(self.vx, self.vy)
+        away = self.vx * nx + self.vy * ny
+        if away < speed * MIN_BOUNCE_COS:
+            if nx:
+                self.vx = abs(self.vx) * nx if abs(self.vx) > speed * MIN_BOUNCE_COS else speed * MIN_BOUNCE_COS * nx
+            else:
+                self.vy = abs(self.vy) * ny if abs(self.vy) > speed * MIN_BOUNCE_COS else speed * MIN_BOUNCE_COS * ny
+        scale = rng.uniform(0.85, 1.2)
+        speed = min(max(math.hypot(self.vx, self.vy) * scale, self.base_speed * 0.5), self.base_speed * 1.8)
+        angle = math.atan2(self.vy, self.vx)
+        self.vx, self.vy = math.cos(angle) * speed, math.sin(angle) * speed
+
+    def step(self, dt: float, w: int, h: int, rng: random.Random, wander: float, spread: float) -> None:
+        if wander:
+            self._steer(rng, wander * dt)
         self.x += self.vx * dt
         self.y += self.vy * dt
         if self.x < 0:
-            self.x, self.vx = -self.x, abs(self.vx) * rng.uniform(0.8, 1.2)
+            self.x = -self.x
+            self._bounce((1, 0), rng, spread)
         elif self.x > w - 1:
-            self.x, self.vx = 2 * (w - 1) - self.x, -abs(self.vx) * rng.uniform(0.8, 1.2)
+            self.x = 2 * (w - 1) - self.x
+            self._bounce((-1, 0), rng, spread)
         if self.y < 0:
-            self.y, self.vy = -self.y, abs(self.vy) * rng.uniform(0.8, 1.2)
+            self.y = -self.y
+            self._bounce((0, 1), rng, spread)
         elif self.y > h - 1:
-            self.y, self.vy = 2 * (h - 1) - self.y, -abs(self.vy) * rng.uniform(0.8, 1.2)
+            self.y = 2 * (h - 1) - self.y
+            self._bounce((0, -1), rng, spread)
 
 
 @dataclass
@@ -69,10 +108,11 @@ class QixModule(Module[QixSettings]):
         w, h = size.w, size.h
         for i in range(self.settings.qixes):
             speed = float(self.settings.speed)
-            a = Point(self.rng.uniform(0, w - 1), self.rng.uniform(0, h - 1), *self._vel(speed))
-            b = Point(self.rng.uniform(0, w - 1), self.rng.uniform(0, h - 1), *self._vel(speed))
+            a = Point(self.rng.uniform(0, w - 1), self.rng.uniform(0, h - 1), *self._vel(speed), base_speed=speed)
+            b = Point(self.rng.uniform(0, w - 1), self.rng.uniform(0, h - 1), *self._vel(speed), base_speed=speed)
             self.qixes.append(Qix(a, b, hue=i / max(1, self.settings.qixes), lines=deque(maxlen=self.settings.trail)))
         self._spawn_acc = 0.0
+        self._t = 0.0
 
     def _vel(self, speed: float) -> tuple[float, float]:
         ang = self.rng.uniform(0, 6.283185)
@@ -83,11 +123,16 @@ class QixModule(Module[QixSettings]):
         self.settings = settings
         self._reset(self.ctx.size)
 
+    def on_enter(self) -> None:
+        self._reset(self.ctx.size)
+
     def advance(self, dt: float, size: Size) -> None:
         self._t += dt
+        wander = self.settings.wander / 100 * MAX_WANDER
+        spread = self.settings.wander / 100 * MAX_SPREAD
         for q in self.qixes:
-            q.a.step(dt, size.w, size.h, self.rng)
-            q.b.step(dt, size.w, size.h, self.rng)
+            q.a.step(dt, size.w, size.h, self.rng, wander, spread)
+            q.b.step(dt, size.w, size.h, self.rng, wander, spread)
         self._spawn_acc += dt * self.settings.spawn_rate
         while self._spawn_acc >= 1.0:
             self._spawn_acc -= 1.0

@@ -57,6 +57,18 @@ def test_golden_other_sizes(size, style, request):
     assert_golden(img, f"clock/{size}/{style}_12h_seconds", request)
 
 
+@pytest.mark.parametrize("style", ["segment", "pixel"])
+def test_128x32_uses_more_than_the_middle_64_pixels(style):
+    """A 128x32 panel is not an even multiple of the 64x32 layout, so without one of its own
+    the clock is drawn into the middle 64 columns and the rest of the board stays dark."""
+    size = Size(128, 32)
+    img, _ = render(ClockSettings(style=style, show_seconds=True), size=size)
+    lit_x = [x for x in range(size.w) for y in range(size.h) if img.getpixel((x, y)) != (0, 0, 0)]
+    assert max(lit_x) - min(lit_x) > 64
+    margin = (size.w - 64) // 2  # where a centred 64-wide layout would have stopped
+    assert min(lit_x) < margin or max(lit_x) >= size.w - margin
+
+
 def test_helpers_and_fps():
     _, mod = render(ClockSettings())
     assert mod.fps() == 2

@@ -170,6 +170,9 @@ class SnakeModule(Module[SnakeSettings]):
         self.settings = settings
         self._reset(self.ctx.size)
 
+    def on_enter(self) -> None:
+        self._reset(self.ctx.size)
+
     def _cell_rect(self, c: Canvas, cell: Cell, color: Color) -> None:
         gap = 1 if self.px >= 3 else 0
         c.rect(self.ox + cell[0] * self.px, self.oy + cell[1] * self.px, self.px - gap, self.px - gap, fill=color)

@@ -86,7 +86,28 @@ class WebConfig(BaseModel):
     auth_enabled: bool = Field(False, title="Require password", description="Set one with `homely config set-password`")
 
 
-TransitionName = Literal["cut", "fade", "slide_left", "slide_right", "slide_up", "slide_down"]
+# Keep in sync with homely.core.transitions.TRANSITION_NAMES (a test asserts they match).
+TransitionName = Literal[
+    "cut",
+    "fade",
+    "fade_black",
+    "slide_left",
+    "slide_right",
+    "slide_up",
+    "slide_down",
+    "wipe_left",
+    "wipe_right",
+    "wipe_up",
+    "wipe_down",
+    "curtain_h",
+    "curtain_v",
+    "blinds",
+    "iris",
+    "dissolve",
+    "pixelate",
+    "glitch",
+    "random",
+]
 
 
 class RotationConfig(BaseModel):

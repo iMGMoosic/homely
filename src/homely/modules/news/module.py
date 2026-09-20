@@ -58,7 +58,7 @@ class NewsModule(Module[NewsSettings]):
         description="Headlines from any RSS or Atom feeds, a few per turn.",
         tier=Tier.NEED,
         icon="news",
-        default_duration_s=21,
+        default_duration_s=30,
         default_fps=1,
         min_size=Size(32, 32),
     )

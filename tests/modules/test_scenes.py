@@ -11,8 +11,8 @@ from homely.modules.skyline.settings import SkylineSettings
 from homely.modules.snake.module import Phase as SnakePhase
 from homely.modules.snake.module import SnakeModule, bfs
 from homely.modules.snake.settings import SnakeSettings
+from homely.modules.tree.module import LEAF_SHAPES, TreeModule
 from homely.modules.tree.module import Phase as TreePhase
-from homely.modules.tree.module import TreeModule
 from homely.modules.tree.settings import TreeSettings
 from homely.render.canvas import Canvas
 from homely.render.size import SUPPORTED_SIZES, Size
@@ -96,6 +96,25 @@ def test_tree_grows_leafs_and_sheds():
             break
     assert {TreePhase.AUTUMN, TreePhase.FALL, TreePhase.FADE} <= seen
     assert mod._phase is TreePhase.GROW and len(mod.nodes) < 40
+
+
+@pytest.mark.parametrize(("size", "expected"), [(Size(128, 32), 2), (Size(64, 64), 3), (Size(128, 128), 4)], ids=str)
+def test_tree_leaves_are_bigger_than_one_pixel(size, expected):
+    """Single-pixel leaves all but disappear on a real panel, so each one is a stamp."""
+    mod = TreeModule(make_ctx(size), TreeSettings(speed=60, hold_s=5), seed=3)
+    assert mod.leaf_px == expected
+    run_frames(mod, size, 300)  # growth is done and the leaves are all out
+    assert mod._phase in (TreePhase.HOLD, TreePhase.AUTUMN)
+    img = run_frames(mod, size, 1)
+    leaf_color = min(mod.leaves, key=lambda lf: lf.y)
+    lx, ly = int(leaf_color.x) - (expected - 1) // 2, int(leaf_color.y) - (expected - 1) // 2
+    block = [img.getpixel((lx + dx, ly + dy)) for dx, dy in LEAF_SHAPES[expected]]
+    assert all(p != (0, 0, 0) for p in block), (size, block)
+
+
+def test_tree_leaf_size_can_be_set():
+    mod = TreeModule(make_ctx(Size(64, 64)), TreeSettings(leaf_size=1), seed=3)
+    assert mod.leaf_px == 1
 
 
 @pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)

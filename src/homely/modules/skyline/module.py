@@ -193,6 +193,10 @@ class SkylineModule(Module[SkylineSettings]):
                 )
             )
 
+    def on_enter(self) -> None:
+        # Every turn builds a new city and restarts the timelapse day at the current time.
+        self._reset(self.ctx.size)
+
     @layout_fallback
     def render_any(self, c: Canvas, frame: FrameInfo) -> None:
         if c.size != self.size:

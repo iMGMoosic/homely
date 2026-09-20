@@ -21,9 +21,9 @@ class LavaLampSettings(ModuleSettings):
         title="Blob size (% of the panel)",
         json_schema_extra={"x-group": "Lava", "x-order": 30, "x-widget": "slider"},
     )
-    palette: Literal["classic", "ocean", "toxic", "sunset", "custom"] = Field(
-        "classic", title="Palette", json_schema_extra={"x-group": "Colors", "x-order": 10}
-    )
+    palette: Literal[
+        "classic", "ocean", "toxic", "sunset", "ember", "berry", "cyber", "mint", "gold", "ice", "custom"
+    ] = Field("classic", title="Palette", json_schema_extra={"x-group": "Colors", "x-order": 10})
     lava_color: str = Field(
         "#FF4A1C",
         title="Lava (custom)",

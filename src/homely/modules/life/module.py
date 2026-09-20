@@ -123,6 +123,9 @@ class LifeModule(Module[LifeSettings]):
         self.settings = settings
         self._reset(self.ctx.size)
 
+    def on_enter(self) -> None:
+        self._reset(self.ctx.size)
+
     def _palette(self) -> tuple[bytes, bytes, bytes]:
         """RGB lookups indexed by age (0 = dead) for the current color mode."""
         base = hsv(self._hue, 0.8, 1.0) if self.settings.color_mode == "rainbow" else parse_color(self.settings.color)

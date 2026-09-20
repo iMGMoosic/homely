@@ -26,6 +26,15 @@ class QixSettings(ModuleSettings):
         20, ge=2, le=60, title="New line every 1/N second", json_schema_extra={"x-group": "Motion", "x-order": 30}
     )
     qixes: Literal[1, 2, 3] = Field(1, title="Number of qixes", json_schema_extra={"x-group": "Motion", "x-order": 40})
+    wander: int = Field(
+        45,
+        ge=0,
+        le=100,
+        title="Wander",
+        description="How far the lines drift off a straight bounce. 0 bounces like a billiard ball, "
+        "which on a wide panel settles into the same up-down, left-right path.",
+        json_schema_extra={"x-group": "Motion", "x-order": 50, "x-widget": "slider"},
+    )
     color_mode: Literal["rainbow", "single", "duo"] = Field(
         "rainbow", title="Colors", json_schema_extra={"x-group": "Colors", "x-order": 10}
     )

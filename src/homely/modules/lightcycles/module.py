@@ -1,6 +1,14 @@
-"""Light cycles: riders race across the arena leaving solid light walls behind them. Each
-rider steers by how much open room a move leaves (a bounded flood fill), swerving late when a
-wall is close. Crashing derezzes a trail; the last rider standing wins the round."""
+"""Light cycles: riders race across the arena leaving solid light walls behind them.
+
+Steering is the classic Tron-bot heuristic. For every legal move a rider runs one multi-source
+breadth-first search from its own would-be head and every rival head at once, and counts the
+cells it would reach strictly sooner than anyone else: its territory. That single number covers
+both halves of the game -- do not get boxed in, and do not hand the board away -- where a plain
+flood fill only measured the first. On top of it a rider refuses moves with no exit (suicide on
+the following step), hugs walls on ties so it packs its own space tightly instead of leaving
+unusable slivers, and keeps going straight only while that costs it almost no territory.
+
+Crashing derezzes a trail; the last rider standing wins the round."""
 
 from __future__ import annotations
 
@@ -23,7 +31,10 @@ PALETTES: dict[str, list[Color]] = {
     "neon": [(0, 255, 180), (255, 0, 200), (255, 255, 0), (120, 80, 255)],
     "duel": [(60, 160, 255), (255, 60, 40), (60, 160, 255), (255, 60, 40)],
 }
-FLOOD_CAP = 220
+ARENA_CELLS = 1200  # automatic cell size keeps the arena to about this many cells
+FLOOD_CAP = ARENA_CELLS + 100  # so a search covers the whole arena instead of truncating
+CONTESTED = -1  # territory owner for cells two riders reach on the same step
+STRAIGHT_KEEP = 0.9  # go straight while it keeps this much of the best move's territory
 
 
 class Phase(Enum):
@@ -64,7 +75,13 @@ class LightCyclesModule(Module[LightCyclesSettings]):
     def _cell_px(self, size: Size) -> int:
         if self.settings.cell_px:
             return self.settings.cell_px
-        return 2 if min(size.w, size.h) >= 96 else 1
+        # Fat cells on big panels. A 128x32 board is 4096 single pixels: hairline trails that
+        # barely read on a LED panel, and far more cells than a rider can search before it has
+        # to commit to a move, which is what made riders wall themselves in.
+        px = 1
+        while px < 4 and (size.w // px) * (size.h // px) > ARENA_CELLS:
+            px += 1
+        return px
 
     def _reset(self, size: Size) -> None:
         self.px = self._cell_px(size)
@@ -75,8 +92,12 @@ class LightCyclesModule(Module[LightCyclesSettings]):
         n = self.settings.cycles
         # Pinwheel starts: each rider begins near an edge heading along it, so nobody faces
         # another rider at the start (the old layout sent pairs straight into each other).
-        cx, cy = self.cols // 2, self.rows // 2
-        mx, my = self.cols // 6, self.rows // 6
+        # The exact spots are jittered because the steering itself is near-deterministic: with
+        # fixed starts every round of a given size would play out identically.
+        cx = self.rng.randint(self.cols // 3, max(self.cols // 3, 2 * self.cols // 3))
+        cy = self.rng.randint(self.rows // 3, max(self.rows // 3, 2 * self.rows // 3))
+        mx = self.rng.randint(max(1, self.cols // 8), max(1, self.cols // 3))
+        my = self.rng.randint(max(1, self.rows // 8), max(1, self.rows // 3))
         starts = [
             ((mx, cy), 3),  # left edge, heading up
             ((self.cols - 1 - mx, cy), 1),  # right edge, heading down
@@ -98,20 +119,52 @@ class LightCyclesModule(Module[LightCyclesSettings]):
     def _free(self, cell: Cell) -> bool:
         return 0 <= cell[0] < self.cols and 0 <= cell[1] < self.rows and cell not in self.walls
 
-    def _open_room(self, start: Cell) -> int:
-        """Bounded flood fill: how many free cells are reachable from start (capped)."""
-        if not self._free(start):
+    def _territory(self, mine: Cell, rivals: list[Cell]) -> int:
+        """Cells reachable from `mine` strictly sooner than from any rival head (capped).
+
+        One breadth-first wave is grown from every head at once; each cell is claimed by
+        whichever head arrives first, and cells reached on the same step by two heads go to
+        nobody. With no rivals left this is just a flood fill, which is what we want: then the
+        only thing that matters is not sealing yourself in.
+        """
+        if not self._free(mine):
             return 0
-        seen = {start}
-        q: deque[Cell] = deque([start])
-        while q and len(seen) < FLOOD_CAP:
-            x, y = q.popleft()
+        # This is the hot loop of the whole module, so the bounds/wall test is inlined rather
+        # than going through _free() for every neighbour of every visited cell.
+        cols, rows, walls = self.cols, self.rows, self.walls
+        owner: dict[Cell, int] = {mine: 0}
+        dist: dict[Cell, int] = {mine: 0}
+        q: deque[tuple[int, int, int, int]] = deque([(mine[0], mine[1], 0, 0)])
+        for i, head in enumerate(rivals, start=1):
+            owner[head] = i
+            dist[head] = 0
+            q.append((head[0], head[1], i, 0))
+        count = 1
+        visited = len(owner)
+        while q and visited < FLOOD_CAP:
+            x, y, who, d = q.popleft()
+            if owner[(x, y)] != who:
+                continue  # this cell was contested after it went into the queue
+            nd = d + 1
             for dx, dy in DIRS:
-                nxt = (x + dx, y + dy)
-                if nxt not in seen and self._free(nxt):
-                    seen.add(nxt)
-                    q.append(nxt)
-        return len(seen)
+                nx, ny = x + dx, y + dy
+                if nx < 0 or nx >= cols or ny < 0 or ny >= rows:
+                    continue
+                nxt = (nx, ny)
+                if nxt in walls:
+                    continue
+                seen_at = dist.get(nxt)
+                if seen_at is None:
+                    dist[nxt], owner[nxt] = nd, who
+                    visited += 1
+                    if who == 0:
+                        count += 1
+                    q.append((nx, ny, who, nd))
+                elif seen_at == nd and owner[nxt] not in (who, CONTESTED):
+                    if owner[nxt] == 0:
+                        count -= 1
+                    owner[nxt] = CONTESTED
+        return count
 
     def _danger(self, me: Rider) -> set[Cell]:
         """Cells the other riders' heads are about to claim: their next few cells ahead."""
@@ -139,27 +192,44 @@ class LightCyclesModule(Module[LightCyclesSettings]):
             n += 1
         return n
 
+    def _exits(self, cell: Cell) -> int:
+        return sum(1 for dx, dy in DIRS if self._free((cell[0] + dx, cell[1] + dy)))
+
     def _choose(self, r: Rider) -> int | None:
         options = [r.direction, (r.direction + 1) % 4, (r.direction - 1) % 4]
         danger = self._danger(r)
-        # Keep going straight while the road ahead is clear; swerve when a wall or rider gets close.
-        if self._clear_ahead(r.pos, r.direction, danger) >= self.settings.lookahead and self.rng.random() > 0.04:
-            return r.direction
-        scored: list[tuple[float, int]] = []
-        for d in options:
+        rivals = [o.pos for o in self.riders if o is not r and o.alive]
+        legal = [d for d in options if self._free((r.pos[0] + DIRS[d][0], r.pos[1] + DIRS[d][1]))]
+        scored: list[tuple[float, int, int]] = []  # (score, territory, direction)
+        for d in legal:
             nxt = (r.pos[0] + DIRS[d][0], r.pos[1] + DIRS[d][1])
-            if not self._free(nxt):
-                continue
-            room = self._open_room(nxt)
+            exits = self._exits(nxt)
+            if exits == 0:
+                continue  # a pocket: moving in means crashing on the very next step
+            room = self._territory(nxt, rivals)
             ahead = self._clear_ahead(r.pos, d, danger)
-            score = room + ahead * 2 + (3 if d == r.direction else 0) + self.rng.random() * 2
+            # Territory dominates. Once a rider is boxed into a region it can count to the end
+            # (room below the cap), fewer exits breaks ties, which packs its own space tightly
+            # instead of stranding one-cell slivers. In the open, where the search saturates and
+            # every option scores the same, that same term would just spiral it into a corner --
+            # so out there `ahead` decides and riders run long clean lines.
+            score = room * 4 + ahead * 2 + self.rng.random() * 3
+            if room < FLOOD_CAP:
+                score -= exits
             if nxt in danger:
-                score -= 150  # only if nothing else is left
-            scored.append((score, d))
+                score -= 4 * FLOOD_CAP  # a rival may take this cell on the same step
+            scored.append((score, room, d))
         if not scored:
-            return None
+            # Every option is fatal; still move, so the crash looks like a crash.
+            return self.rng.choice(legal) if legal else None
         scored.sort(reverse=True)
-        return scored[0][1]
+        _, best_room, best_d = scored[0]
+        for score, room, d in scored:
+            # Holding a line looks far better than jittering, so keep straight unless it
+            # actually costs territory.
+            if d == r.direction and score > -FLOOD_CAP and room >= best_room * STRAIGHT_KEEP:
+                return d
+        return best_d
 
     def step(self) -> bool:
         """Advance every living rider one cell; returns False when the round just ended."""
@@ -210,6 +280,9 @@ class LightCyclesModule(Module[LightCyclesSettings]):
 
     async def on_settings_changed(self, settings: LightCyclesSettings) -> None:
         self.settings = settings
+        self._reset(self.ctx.size)
+
+    def on_enter(self) -> None:
         self._reset(self.ctx.size)
 
     def _cell(self, c: Canvas, cell: Cell, color: Color) -> None:
