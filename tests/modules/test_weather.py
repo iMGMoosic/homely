@@ -12,13 +12,14 @@ from PIL import ImageChops
 
 from homely.core.module import FrameInfo
 from homely.modules.weather.colors import NIGHT, NOON, SUNRISE, sky_gradient, temp_color
-from homely.modules.weather.module import WeatherModule
+from homely.modules.weather.module import WeatherModule, _fit_label
 from homely.modules.weather.providers import Forecast, OpenMeteoProvider
 from homely.modules.weather.providers.open_meteo import parse_forecast
 from homely.modules.weather.settings import WeatherSettings
 from homely.modules.weather.solar import sun_times
 from homely.modules.weather.wmo import icon_for, label_for, short_label_for
 from homely.render.canvas import Canvas
+from homely.render.fonts import get_font
 from homely.render.size import SUPPORTED_SIZES, Size
 from tests.conftest import make_ctx
 from tests.golden_util import assert_golden
@@ -211,16 +212,38 @@ def test_forecast_days_defaults_to_five_on_wide_panels(size, expected):
 
 
 @pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
-def test_feels_like_is_drawn_at_every_size(size):
-    """It used to be drawn only by the 64x64 layout, so on any other panel the setting did
-    nothing at all."""
+@pytest.mark.parametrize("same_as_temp", [False, True], ids=["differs", "same"])
+def test_feels_like_is_drawn_at_every_size(size, same_as_temp):
+    """It used to be drawn only by the 64x64 layout, and even there it hid itself whenever the
+    apparent temperature rounded to the temperature -- most mild days. Either way, turning the
+    setting on appeared to do nothing."""
     fc = fixture_forecast()
-    assert round(fc.current.feels_like) != round(fc.current.temp)  # otherwise there is nothing to show
+    if same_as_temp:
+        fc = replace(fc, current=replace(fc.current, feels_like=fc.current.temp))
     off = render(make_module(WeatherSettings(show_feels_like=False), size, NOW_DAY, fc), size, NOW_DAY)
     on = render(make_module(WeatherSettings(show_feels_like=True), size, NOW_DAY, fc), size, NOW_DAY)
     if size.w < 48 and size.h < 48:
         return  # too small for a second line of text; the layouts skip it by design
     assert ImageChops.difference(off, on).getbbox() is not None, size
+
+
+@pytest.mark.parametrize("size", [Size(128, 32), Size(128, 64), Size(64, 64)], ids=str)
+def test_long_conditions_shorten_rather_than_clip(size):
+    """ "Partly cloudy" in a narrow column used to come out as "Partly clou...";
+    it should fall back to the short label instead."""
+    fc = fixture_forecast()
+    partly = replace(fc, current=replace(fc.current, code=2, is_day=True))
+    img = render(make_module(WeatherSettings(show_feels_like=True), size, NOW_DAY, partly), size, NOW_DAY)
+    assert img.size == size.as_tuple()
+    fonts = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8", "4x6", "tom-thumb")]
+    narrowest = min(f.measure("Partly") for f in fonts)
+    for width in (narrowest, 40, 60, 90):
+        font, text = _fit_label(("Partly cloudy", "Partly"), fonts, width)
+        assert text in ("Partly cloudy", "Partly"), (width, text)  # whole, never clipped
+        assert font.measure(text) <= width
+    # Below that there is nothing left to shorten to, so it does fall back to clipping.
+    _, clipped = _fit_label(("Partly cloudy", "Partly"), fonts, narrowest - 4)
+    assert clipped not in ("Partly cloudy", "Partly")
 
 
 def _status_frame() -> FrameInfo:

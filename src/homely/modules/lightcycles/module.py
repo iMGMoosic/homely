@@ -6,7 +6,12 @@ cells it would reach strictly sooner than anyone else: its territory. That singl
 both halves of the game -- do not get boxed in, and do not hand the board away -- where a plain
 flood fill only measured the first. On top of it a rider refuses moves with no exit (suicide on
 the following step), hugs walls on ties so it packs its own space tightly instead of leaving
-unusable slivers, and keeps going straight only while that costs it almost no territory.
+unusable slivers, and keeps going straight only while that costs it almost no territory. The
+`aggression` setting then spends some of that territory: among the moves that cost it little,
+a rider takes the one that closes on a rival rather than the one that simply banks the most
+space. When nothing is within reach to tell the moves apart, the search is skipped entirely --
+running it on an empty board is both the most expensive it ever gets and the least informative,
+and it was what made three and four riders stutter at the start of a round.
 
 Crashing derezzes a trail; the last rider standing wins the round."""
 
@@ -35,6 +40,7 @@ ARENA_CELLS = 1200  # automatic cell size keeps the arena to about this many cel
 FLOOD_CAP = ARENA_CELLS + 100  # so a search covers the whole arena instead of truncating
 CONTESTED = -1  # territory owner for cells two riders reach on the same step
 STRAIGHT_KEEP = 0.9  # go straight while it keeps this much of the best move's territory
+GIVE_UP_FOR_BLOOD = 0.25  # share of its own territory a fully aggressive rider will trade to crowd a rival
 
 
 class Phase(Enum):
@@ -195,11 +201,31 @@ class LightCyclesModule(Module[LightCyclesSettings]):
     def _exits(self, cell: Cell) -> int:
         return sum(1 for dx, dy in DIRS if self._free((cell[0] + dx, cell[1] + dy)))
 
+    def _coasting(self, r: Rider, rivals: list[Cell]) -> bool:
+        """True when nothing is close enough for the search to tell the options apart.
+
+        Running it anyway is what made three and four riders stutter for the first seconds of a
+        round: on an empty board every option floods the whole arena, which is the most
+        expensive the search ever gets and the least informative.
+        """
+        reach = self.settings.lookahead
+        if self._clear_ahead(r.pos, r.direction) < reach:
+            return False
+        x, y = r.pos
+        if min((abs(x - rx) + abs(y - ry) for rx, ry in rivals), default=99) <= reach + 2:
+            return False
+        # Both flanks open for a few cells too, so it is not skimming along a wall it should
+        # be turning away from.
+        return all(self._clear_ahead(r.pos, (r.direction + turn) % 4) >= 2 for turn in (1, -1))
+
     def _choose(self, r: Rider) -> int | None:
         options = [r.direction, (r.direction + 1) % 4, (r.direction - 1) % 4]
-        danger = self._danger(r)
         rivals = [o.pos for o in self.riders if o is not r and o.alive]
+        if self._coasting(r, rivals):
+            return r.direction
+        danger = self._danger(r)
         legal = [d for d in options if self._free((r.pos[0] + DIRS[d][0], r.pos[1] + DIRS[d][1]))]
+        aggression = self.settings.aggression / 100
         scored: list[tuple[float, int, int]] = []  # (score, territory, direction)
         for d in legal:
             nxt = (r.pos[0] + DIRS[d][0], r.pos[1] + DIRS[d][1])
@@ -211,25 +237,46 @@ class LightCyclesModule(Module[LightCyclesSettings]):
             # Territory dominates. Once a rider is boxed into a region it can count to the end
             # (room below the cap), fewer exits breaks ties, which packs its own space tightly
             # instead of stranding one-cell slivers. In the open, where the search saturates and
-            # every option scores the same, that same term would just spiral it into a corner --
-            # so out there `ahead` decides and riders run long clean lines.
+            # every option scores the same, that term would just spiral it into a corner, so out
+            # there `ahead` decides and riders run long clean lines.
             score = room * 4 + ahead * 2 + self.rng.random() * 3
             if room < FLOOD_CAP:
                 score -= exits
             if nxt in danger:
-                score -= 4 * FLOOD_CAP  # a rival may take this cell on the same step
+                score -= 8 * FLOOD_CAP  # a rival may take this cell on the same step
             scored.append((score, room, d))
         if not scored:
             # Every option is fatal; still move, so the crash looks like a crash.
             return self.rng.choice(legal) if legal else None
         scored.sort(reverse=True)
-        _, best_room, best_d = scored[0]
-        for score, room, d in scored:
+        safe = [(score, room, d) for score, room, d in scored if score > -FLOOD_CAP]
+        best_room = max((room for _, room, _ in safe), default=0)
+        if aggression and rivals and safe:
+            # Scoring on (my territory - the rival's) cannot make a rider play the other riders:
+            # the search splits the free space between the heads, so that difference is a
+            # monotonic function of my own share and ranks the moves in exactly the same order.
+            # Aggression instead spends territory. Every move that stays within `give_up` of the
+            # best is a contender, and among those the rider takes the one that closes on a
+            # rival -- crowding it, and cutting its room off sooner.
+            give_up = best_room * (1 - GIVE_UP_FOR_BLOOD * aggression)
+            contenders = [(room, d) for _, room, d in safe if room >= give_up]
+            if len(contenders) > 1:
+                # Ties go to holding the line, then to the roomier move.
+                def hunt(candidate: tuple[int, int]) -> tuple[int, bool, int]:
+                    room, d = candidate
+                    return self._closeness(r, d, rivals), d != r.direction, -room
+
+                return min(contenders, key=hunt)[1]
+        for _, room, d in safe:
             # Holding a line looks far better than jittering, so keep straight unless it
             # actually costs territory.
-            if d == r.direction and score > -FLOOD_CAP and room >= best_room * STRAIGHT_KEEP:
+            if d == r.direction and room >= best_room * STRAIGHT_KEEP:
                 return d
-        return best_d
+        return scored[0][2]
+
+    def _closeness(self, r: Rider, d: int, rivals: list[Cell]) -> int:
+        x, y = r.pos[0] + DIRS[d][0], r.pos[1] + DIRS[d][1]
+        return min(abs(x - rx) + abs(y - ry) for rx, ry in rivals)
 
     def step(self) -> bool:
         """Advance every living rider one cell; returns False when the round just ended."""

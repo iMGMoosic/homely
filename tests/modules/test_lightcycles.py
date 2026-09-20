@@ -65,6 +65,58 @@ def test_four_riders_survive_the_opening(seed):
     assert mod._phase is Phase.OVER or sum(r.alive for r in mod.riders) >= 1
 
 
+def test_opening_skips_the_search_while_nothing_is_in_reach():
+    """Four riders on an empty board used to run the full search three times each per step --
+    the most expensive it ever gets and the least informative, which showed as lag at the
+    start of every round."""
+    mod = LightCyclesModule(make_ctx(Size(128, 32)), LightCyclesSettings(cycles=4), seed=3)
+    mod.on_enter()
+    searched = 0
+    original = mod._territory
+
+    def counted(mine, rivals):
+        nonlocal searched
+        searched += 1
+        return original(mine, rivals)
+
+    mod._territory = counted
+    run_frames(mod, Size(128, 32), 60)  # the first two seconds
+    opening = searched
+    searched = 0
+    run_frames(mod, Size(128, 32), 60)  # two seconds once walls are up
+    assert opening < searched, (opening, searched)
+
+
+def test_aggression_makes_riders_close_on_each_other():
+    """Scoring on (my territory - the rival's) cannot do this: the search splits the free space
+    between the heads, so that difference ranks the moves exactly as my own share does.
+
+    Measured head to head. With three or four riders the arena is crowded enough that the
+    closest pair is set by the starting geometry, and aggression -- which only ever picks
+    between moves that cost about the same -- does not move this number either way.
+    """
+
+    def mean_separation(aggression: int) -> float:
+        gaps: list[int] = []
+        for seed in range(6):
+            mod = LightCyclesModule(
+                make_ctx(Size(128, 32)), LightCyclesSettings(cycles=2, aggression=aggression), seed=seed
+            )
+            mod.on_enter()
+            canvas = Canvas(Size(128, 32))
+            for i in range(30 * 20):
+                canvas.clear()
+                mod.render(canvas, frame(1 / 30, i / 30))
+                heads = [r.pos for r in mod.riders if r.alive]
+                if len(heads) > 1:
+                    gaps.append(
+                        min(abs(a[0] - b[0]) + abs(a[1] - b[1]) for k, a in enumerate(heads) for b in heads[k + 1 :])
+                    )
+        return sum(gaps) / len(gaps)
+
+    assert mean_separation(80) < mean_separation(0)
+
+
 @pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
 def test_golden_lightcycles(size, request):
     mod = LightCyclesModule(make_ctx(size), LightCyclesSettings(), seed=42)

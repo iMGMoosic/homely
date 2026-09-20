@@ -30,6 +30,15 @@ class LightCyclesSettings(ModuleSettings):
         description="How far ahead a rider notices a wall",
         json_schema_extra={"x-group": "Game", "x-order": 40},
     )
+    aggression: int = Field(
+        45,
+        ge=0,
+        le=100,
+        title="Aggression",
+        description="How much a rider will give up space of its own to shut an opponent in. "
+        "0 plays solitaire and simply takes the most room it can.",
+        json_schema_extra={"x-group": "Game", "x-order": 45, "x-widget": "slider"},
+    )
     pause_s: float = Field(
         2.5,
         ge=0,

@@ -26,9 +26,9 @@ Want to write one? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 Seven-segment LCD-style digits by default (`style: segment`) with optional faint "unlit" segments,
 or a pixel font (`style: pixel`). 12/24 hour, seconds, blinking colon, date formats, per-element
 colors, and a timezone override. Layouts for every supported size, including a letterbox one for
-128x32 that puts the time across the left and stacks the date, seconds and AM/PM in a column on
-the right -- without it a 128-wide board reuses the 64-wide layout and leaves its outer thirds
-dark.
+128x32 -- without it a 128-wide board reuses the 64-wide layout and leaves its outer thirds dark.
+That layout reads left to right: the time, then AM/PM over the seconds pressed up against the
+last digit the way a desk clock shows them, then the date in its own column.
 
 ## Weather
 
@@ -49,8 +49,11 @@ latitude, longitude, name and timezone.
   forecast (with hourly rain-chance bars where there is room). Or pick one.
 - **Forecast days**: `forecast_days: 0` (the default) picks automatically -- five days on panels
   96 px or wider, three on smaller ones. Set 1-5 to override.
-- **Feels-like**: `show_feels_like` adds the apparent temperature under the reading on every
-  layout, and is skipped when it rounds to the same number as the temperature.
+- **Feels-like**: `show_feels_like` adds the apparent temperature under the reading, on every
+  layout. It is shown whenever the setting is on, including when it matches the temperature --
+  hiding it then (most mild days) made the setting look broken.
+- **Condition text** falls back to the short label ("Partly" for "Partly cloudy") when the long
+  one will not fit its column, rather than being clipped mid-word.
 - Metric or imperial follows the global location units. The last forecast is cached on disk so a
   reboot shows weather immediately.
 
@@ -95,9 +98,11 @@ to the heading and scatters each bounce. Set it to 0 for billiard-ball bounces.
 - **Game of Life**: Conway's rules on a wrapping board (or hard edges). Newborn cells flash white
   and settle into the color; dying cells leave a fading ghost. A stalled or empty soup fades out
   and reseeds. `cell_px`, `generations_per_second`, `density`, `color_mode`.
-- **Lava lamp**: a turn starts the way a real lamp does -- everything pooled in one mass at the
-  bottom, which swells and then peels off one blob at a time as it warms up, after which the
-  blobs rise, sink and merge. Palettes: `classic`, `ocean`, `toxic`, `sunset`, `ember`, `berry`,
+- **Lava lamp**: a turn starts the way a real lamp does -- everything pooled in one small mass at
+  the bottom, which peels off one blob at a time as it warms up. After that the blobs follow a
+  convection loop, climbing one side, drifting across the top, sinking down the other and
+  returning along the bottom; each leg is timed by its length so the pace stays even, and which
+  side rises varies by round. Palettes: `classic`, `ocean`, `toxic`, `sunset`, `ember`, `berry`,
   `cyber`, `mint`, `gold`, `ice`, or your own three colors.
 - **TV static**: analog snow with a rolling bar and scanlines; every few seconds the set flips to a
   channel (color bars, a test card, NO SIGNAL, PLEASE STAND BY) and tears back to snow.
@@ -118,11 +123,16 @@ to the heading and scatters each bounce. Set it to 0 for billiard-ball bounces.
   each rival head at once and counts the cells it would reach first -- its territory -- which
   covers both not getting boxed in and not handing the board away. It also refuses moves with no
   exit, hugs walls once it is inside a region it can count to the end, and holds a straight line
-  while that costs it no territory. A crash derezzes the trail into flickering fragments, and the
-  last rider standing flashes as the winner. `cycles`, `speed`, `lookahead`, `cell_px`, `palette`
-  (classic blue vs orange). Cells default to 1-4 px so the arena stays around 1200 cells: small
-  enough for a rider to search the whole board before committing, and fat enough that trails read
-  as lines.
+  while that costs it no territory. `aggression` (default 45) then spends some of that territory:
+  among the moves that cost it little, a rider takes the one that closes on a rival instead of the
+  one that banks the most space. Scoring on (my territory minus the rival's) cannot do this --
+  the search splits the free space between the heads, so that difference ranks the moves in exactly
+  the same order as my own share. When nothing is within reach to tell the moves apart the search
+  is skipped altogether, which is what used to make three and four riders lag at the start of a
+  round. A crash derezzes the trail into flickering fragments, and the last rider standing flashes
+  as the winner. `cycles`, `speed`, `lookahead`, `aggression`, `cell_px`, `palette` (classic blue
+  vs orange). Cells default to 1-4 px so the arena stays around 1200 cells: small enough for a
+  rider to search the whole board before committing, and fat enough that trails read as lines.
 
 All of them are seeded so their goldens are reproducible, and all render in well under a
 millisecond per frame on the Mac (the 3D ones draw incrementally into a depth buffer; light
