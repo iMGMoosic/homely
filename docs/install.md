@@ -1,5 +1,9 @@
 # Installing on the Pi
 
+Raspberry Pi OS **Bookworm or Trixie**, 64-bit, on a Pi 4. Copy the command as one line: a stray
+space or line break inside the URL makes curl fail with `URL rejected: Malformed input to a URL
+function`.
+
 ## One-liner
 
 ```bash
@@ -18,8 +22,13 @@ What it does (idempotent; re-run it to upgrade):
    and a sudoers rule for reboot/shutdown from the UI.
 7. Disables onboard audio and offers to reserve CPU core 3 for the display.
 
-Options: `--yes`, `--version X.Y.Z`, `--from-pypi`, `--no-isolcpus`, `--no-hostname`, `--rebuild-matrix`,
-`--uninstall [--purge]`.
+Options: `--yes`, `--version X.Y.Z`, `--from-pypi`, `--from-source` (build from the git repo, no
+release needed), `--ref BRANCH`, `--no-isolcpus`, `--no-hostname`, `--rebuild-matrix`,
+`--uninstall [--purge]`. Pass them after `bash -s --`, for example:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imgmoosic/homely/main/install.sh | sudo bash -s -- --yes
+```
 
 ## Manual steps
 

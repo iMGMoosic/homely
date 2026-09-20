@@ -4,6 +4,7 @@
 # Options (append after "bash -s --"):
 #   --version X.Y.Z   install a specific release (default: latest)
 #   --from-pypi       install homely-display from PyPI instead of a GitHub release wheel
+#   --from-source     build and install straight from the git repo (no release needed)
 #   --yes             non-interactive (accept defaults, no isolcpus prompt)
 #   --no-isolcpus     don't add the CPU isolation kernel parameter
 #   --no-hostname     don't set the hostname to "homely"
@@ -20,11 +21,18 @@ CONF_DIR=/etc/homely
 STATE_DIR=/var/lib/homely
 USER_NAME=homely
 
-VERSION=""; FROM_PYPI=0; YES=0; ISOLCPUS=1; SET_HOSTNAME=1; REBUILD=0; UNINSTALL=0; PURGE=0
+VERSION=""; FROM_PYPI=0; FROM_SOURCE=0; YES=0; ISOLCPUS=1; SET_HOSTNAME=1; REBUILD=0; UNINSTALL=0; PURGE=0
+REF=main
+
+# Strip whitespace and control characters; a stray space or CR (easy to introduce by copying a
+# command out of a rendered page) otherwise reaches curl as "URL rejected: Malformed input".
+clean() { printf '%s' "${1:-}" | tr -d '[:space:]'; }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --version) VERSION="$2"; shift ;;
+    --version) VERSION=$(clean "${2:-}"); shift ;;
     --from-pypi) FROM_PYPI=1 ;;
+    --from-source) FROM_SOURCE=1 ;;
+    --ref) REF=$(clean "${2:-}"); shift ;;
     --yes|-y) YES=1 ;;
     --no-isolcpus) ISOLCPUS=0 ;;
     --no-hostname) SET_HOSTNAME=0 ;;
@@ -62,7 +70,10 @@ fi
 ARCH=$(uname -m)
 [ "$ARCH" = aarch64 ] || warn "expected aarch64, got $ARCH; continuing anyway"
 . /etc/os-release 2>/dev/null || true
-[ "${VERSION_CODENAME:-}" = bookworm ] || warn "tested on Raspberry Pi OS Bookworm; you have ${PRETTY_NAME:-unknown}"
+case "${VERSION_CODENAME:-}" in
+  bookworm|trixie) : ;;
+  *) warn "tested on Raspberry Pi OS Bookworm and Trixie; you have ${PRETTY_NAME:-unknown}" ;;
+esac
 if [ -r /proc/device-tree/model ]; then log "Detected: $(tr -d '\0' </proc/device-tree/model)"; fi
 BOOT=/boot/firmware; [ -d "$BOOT" ] || BOOT=/boot
 
@@ -103,20 +114,39 @@ else
 fi
 
 # ---------- homely ----------
-if [ "$FROM_PYPI" = 1 ]; then
+install_from_source() {
+  log "Installing homely from source ($REPO@$REF); this also needs the web UI, which is built in CI"
+  "$VENV/bin/pip" install -q --upgrade "git+https://github.com/$REPO@$REF"
+}
+
+if [ "$FROM_SOURCE" = 1 ]; then
+  install_from_source
+elif [ "$FROM_PYPI" = 1 ]; then
   log "Installing homely-display from PyPI"
   if [ -n "$VERSION" ]; then "$VENV/bin/pip" install -q --upgrade "homely-display==$VERSION"; else "$VENV/bin/pip" install -q --upgrade homely-display; fi
 else
+  API="https://api.github.com/repos/$REPO/releases"
   if [ -z "$VERSION" ]; then
-    VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
-    [ -n "$VERSION" ] || die "could not determine the latest release; pass --version X.Y.Z or --from-pypi"
+    # `|| true` so a 404 (no releases yet) is reported by us, not as a raw curl error under `set -e`.
+    LATEST=$(curl -fsSL "$API/latest" || true)
+    VERSION=$(printf '%s' "$LATEST" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
+    VERSION=$(clean "$VERSION")
+    if [ -z "$VERSION" ]; then
+      warn "$REPO has no published release yet"
+      log "Falling back to a source install; pass --version X.Y.Z once releases exist"
+      install_from_source
+      VERSION=source
+    fi
   fi
-  log "Installing homely $VERSION from GitHub release"
-  WHEEL_URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/tags/v$VERSION" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -n1)
-  [ -n "$WHEEL_URL" ] || die "release v$VERSION has no wheel attached"
-  TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-  curl -fsSL -o "$TMP/homely.whl" "$WHEEL_URL"
-  "$VENV/bin/pip" install -q --upgrade "$TMP/homely.whl"
+  if [ "$VERSION" != source ]; then
+    log "Installing homely $VERSION from GitHub release"
+    WHEEL_URL=$(curl -fsSL "$API/tags/v$VERSION" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -n1)
+    WHEEL_URL=$(clean "$WHEEL_URL")
+    [ -n "$WHEEL_URL" ] || die "release v$VERSION has no wheel attached; try --from-source"
+    TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+    curl -fsSL -o "$TMP/homely.whl" "$WHEEL_URL"
+    "$VENV/bin/pip" install -q --upgrade "$TMP/homely.whl"
+  fi
 fi
 "$VENV/bin/homely" version
 
