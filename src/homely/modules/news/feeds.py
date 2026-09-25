@@ -11,7 +11,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import feedparser
-import httpx
+
+from homely.data.http import ConditionalFetcher
 
 _WS = re.compile(r"\s+")
 
@@ -73,27 +74,8 @@ def parse_feed(content: bytes | str, *, source_name: str, color: str) -> tuple[s
     return feed_title, out
 
 
-class FeedFetcher:
-    """Conditional GETs with ETag / Last-Modified so unchanged feeds cost almost nothing."""
-
-    def __init__(self, http: httpx.AsyncClient) -> None:
-        self._http = http
-        self._validators: dict[str, dict[str, str]] = {}
-
-    async def fetch(self, url: str) -> bytes | None:
-        """Body bytes, or None when the server says the feed is unchanged (304)."""
-        headers = dict(self._validators.get(url, {}))
-        resp = await self._http.get(url, headers=headers, follow_redirects=True)
-        if resp.status_code == 304:
-            return None
-        resp.raise_for_status()
-        validators: dict[str, str] = {}
-        if etag := resp.headers.get("etag"):
-            validators["If-None-Match"] = etag
-        if modified := resp.headers.get("last-modified"):
-            validators["If-Modified-Since"] = modified
-        self._validators[url] = validators
-        return resp.content
+class FeedFetcher(ConditionalFetcher):
+    """Conditional GETs (so unchanged feeds cost almost nothing), parsed off the event loop."""
 
     async def fetch_and_parse(self, url: str, *, source_name: str, color: str) -> tuple[str, list[Headline]] | None:
         body = await self.fetch(url)
