@@ -1,6 +1,6 @@
 # homely example configuration. The web UI edits this file for you; hand edits are fine too.
 # Docs: docs/configuration.md and docs/hardware.md
-version: 1
+version: 2
 panel:
   rows: 64
   cols: 64

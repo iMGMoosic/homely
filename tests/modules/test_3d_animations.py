@@ -5,8 +5,6 @@ import math
 import pytest
 
 from homely.core.module import FrameInfo
-from homely.modules.pipes.module import Phase, PipesModule
-from homely.modules.pipes.settings import PipesSettings
 from homely.modules.starfield.module import StarfieldModule
 from homely.modules.starfield.settings import StarfieldSettings
 from homely.render.canvas import Canvas
@@ -92,22 +90,3 @@ def test_starfield_recycles_stars_and_draws():
 def test_golden_starfield(size, request):
     mod = StarfieldModule(make_ctx(size), StarfieldSettings(), seed=42)
     assert_golden(run_frames(mod, size, 45), f"starfield/{size}/frame_45", request)
-
-
-# ---- pipes -------------------------------------------------------------------------------------
-
-
-def test_pipes_grow_within_grid_and_finish():
-    mod = PipesModule(make_ctx(Size(64, 64)), PipesSettings(grid=5, pipes=3, speed=40, pause_s=0.2), seed=4)
-    run_frames(mod, Size(64, 64), 90)  # 3 s at 40 cells/s: all three pipes done, hold, fade
-    assert all(0 <= c < 5 for v in mod.occupied for c in v)
-    assert mod.done_pipes >= 3 or mod._phase in (Phase.HOLD, Phase.FADE) or len(mod.occupied) == 0
-    assert mod._img is not None
-
-
-@pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
-def test_golden_pipes(size, request):
-    mod = PipesModule(make_ctx(size), PipesSettings(speed=12), seed=7)
-    img = run_frames(mod, size, 90)  # 3 s
-    assert lit(img) > 30
-    assert_golden(img, f"pipes/{size}/frame_90", request)

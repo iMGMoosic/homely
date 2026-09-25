@@ -82,3 +82,47 @@ def test_reload_from_disk_publishes_only_changed_sections(tmp_path):
     assert cfg.brightness.level == 33
     assert seen == ["brightness"]
     assert not store.changed_on_disk()
+
+
+def test_old_config_drops_the_removed_pipes_and_tv_static_modules(tmp_path: Path):
+    """They were cut in 0.2.3; a config that still lists them loads without "unknown module"
+    rows, keeps everything else, and is backed up before it is rewritten."""
+    path = tmp_path / "config.yaml"
+    state = tmp_path / "state"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "rotation": {"idle_module": "static"},
+                "modules": [
+                    {"instance_id": "clock", "module": "clock"},
+                    {"instance_id": "pipes", "module": "pipes", "duration_s": 90},
+                    {"instance_id": "static", "module": "tvstatic"},
+                    {"instance_id": "maze", "module": "maze"},
+                ],
+            }
+        )
+    )
+    cfg = ConfigStore(path, EventBus(), state_dir=state).load()
+    assert [m.instance_id for m in cfg.modules] == ["clock", "maze"]
+    assert cfg.rotation.idle_module is None  # it pointed at the removed static instance
+    assert cfg.version == 2
+    on_disk = yaml.safe_load(path.read_text())
+    assert on_disk["version"] == 2 and [m["module"] for m in on_disk["modules"]] == ["clock", "maze"]
+    backup = yaml.safe_load((state / "config.backup-v1.yaml").read_text())
+    assert [m["module"] for m in backup["modules"]] == ["clock", "pipes", "tvstatic", "maze"]
+
+
+def test_idle_module_survives_the_migration_when_it_was_not_removed(tmp_path: Path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "rotation": {"idle_module": "maze"},
+                "modules": [{"instance_id": "maze", "module": "maze"}, {"instance_id": "p", "module": "pipes"}],
+            }
+        )
+    )
+    cfg = ConfigStore(path, EventBus()).load()
+    assert cfg.rotation.idle_module == "maze" and [m.module for m in cfg.modules] == ["maze"]
