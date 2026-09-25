@@ -9,8 +9,6 @@ from homely.modules.lavalamp.module import DEPART_GAP, LavaLampModule
 from homely.modules.lavalamp.settings import LavaLampSettings
 from homely.modules.life.module import LifeModule
 from homely.modules.life.settings import LifeSettings
-from homely.modules.tvstatic.module import Mode, TvStaticModule
-from homely.modules.tvstatic.settings import TvStaticSettings
 from homely.render.canvas import Canvas
 from homely.render.size import SUPPORTED_SIZES, Size
 from tests.conftest import FROZEN, make_ctx
@@ -196,31 +194,3 @@ def test_golden_lava_palettes(palette, request):
 def test_golden_lava_sizes(size, request):
     mod = LavaLampModule(make_ctx(size), LavaLampSettings(), seed=5)
     assert_golden(run_frames(mod, size, 30), f"lavalamp/{size}/classic", request)
-
-
-# ---- tv static -------------------------------------------------------------------------------
-
-
-def test_static_flips_channels_and_returns():
-    mod = TvStaticModule(make_ctx(Size(64, 64)), TvStaticSettings(flip_every_s=2, channel_hold_s=0.5), seed=6)
-    seen = set()
-    canvas = Canvas(Size(64, 64))
-    for i in range(240):  # 8 s
-        canvas.clear()
-        mod.render(canvas, frame(1 / 30, i / 30))
-        seen.add(mod.mode)
-    assert seen == {Mode.STATIC, Mode.CHANNEL, Mode.TEAR}
-
-
-@pytest.mark.parametrize("size", SUPPORTED_SIZES, ids=str)
-def test_golden_static(size, request):
-    mod = TvStaticModule(make_ctx(size), TvStaticSettings(channel_flips=False), seed=7)
-    assert_golden(run_frames(mod, size, 10), f"tvstatic/{size}/snow", request)
-
-
-@pytest.mark.parametrize("channel", [0, 1, 2, 3])
-def test_golden_static_channels(channel, request):
-    mod = TvStaticModule(make_ctx(Size(64, 64)), TvStaticSettings(), seed=7)
-    mod.mode, mod.channel, mod.timer = Mode.CHANNEL, channel, 1.0
-    mod.settings = TvStaticSettings(channel_hold_s=10)
-    assert_golden(run_frames(mod, Size(64, 64), 1), f"tvstatic/64x64/channel_{channel}", request)

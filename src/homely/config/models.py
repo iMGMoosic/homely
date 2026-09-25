@@ -10,7 +10,7 @@ from homely.core.brightness import BrightnessConfig
 from homely.data.location import LocationConfig
 from homely.render.size import Orientation, Size
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 HardwareMapping = Literal["regular", "adafruit-hat", "adafruit-hat-pwm", "classic", "regular-pi1", "classic-pi1"]
 

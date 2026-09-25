@@ -7,8 +7,8 @@
 | News | Need | available | RSS/Atom feeds |
 | Maze (idle animation) | Need | available | none |
 | Qix (idle animation) | Need | available | none |
-| Starfield, Pipes (3D idle animations) | Need | available | none |
-| Game of Life, Lava lamp, TV static (idle animations) | Need | available | none |
+| Starfield (3D idle animation) | Need | available | none |
+| Game of Life, Lava lamp (idle animations) | Need | available | none |
 | Snake, Growing tree (idle animations) | Need | available | none |
 | Skyline (day/night idle animation) | Need | available | sun times for your location |
 | Light cycles (idle animation) | Need | available | none |
@@ -94,9 +94,6 @@ to the heading and scatters each bounce. Set it to 0 for billiard-ball bounces.
 
 - **Starfield**: fly through a 3D field of stars; nearer stars are brighter and streak, and a
   shooting star crosses now and then. `stars`, `speed`, `trails`, `color_mode`.
-- **Pipes**: the 3D screensaver. Shaded square tubes with ball joints grow through a voxel grid
-  with random turns, each pipe in its own color, until the round's pipes are done; then it fades
-  and starts over. `grid`, `pipes`, `speed`, `turn_chance`, `palette`.
 - **Game of Life**: Conway's rules on a wrapping board (or hard edges). Newborn cells flash white
   and settle into the color; dying cells leave a fading ghost. A stalled or empty soup fades out
   and reseeds. `cell_px`, `generations_per_second`, `density`, `color_mode`.
@@ -107,8 +104,6 @@ to the heading and scatters each bounce. Set it to 0 for billiard-ball bounces.
   The loop is paced by distance so the speed stays even, and which side rises varies by round. A
   turn opens with everything in the lump. Palettes: `classic`, `ocean`, `toxic`, `sunset`,
   `ember`, `berry`, `cyber`, `mint`, `gold`, `ice`, or your own three colors.
-- **TV static**: analog snow with a rolling bar and scanlines; every few seconds the set flips to a
-  channel (color bars, a test card, NO SIGNAL, PLEASE STAND BY) and tears back to snow.
 - **Snake**: plays itself with a shortest-path search to the food, refusing moves that would cut
   it off from its own tail, and chasing the tail when there is no safe route. When it finally traps
   itself it flashes and restarts.
@@ -138,7 +133,7 @@ to the heading and scatters each bounce. Set it to 0 for billiard-ball bounces.
   rider to search the whole board before committing, and fat enough that trails read as lines.
 
 All of them are seeded so their goldens are reproducible, and all render in well under a
-millisecond per frame on the Mac (the 3D ones draw incrementally into a depth buffer; light
+millisecond per frame on the Mac (the starfield projects through a small 3D camera; light
 cycles peaks around 2 ms on a step where every rider re-searches the board).
 
 Every animation restarts when the rotation flips to it, rather than resuming where its last turn

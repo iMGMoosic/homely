@@ -10,8 +10,6 @@ from homely.modules.lightcycles.module import LightCyclesModule
 from homely.modules.lightcycles.settings import LightCyclesSettings
 from homely.modules.maze.module import MazeModule
 from homely.modules.maze.settings import MazeSettings
-from homely.modules.tvstatic.module import Mode, TvStaticModule
-from homely.modules.tvstatic.settings import TvStaticSettings
 from homely.render.canvas import Canvas
 from homely.render.size import Size
 from tests.conftest import FROZEN, make_ctx
@@ -54,12 +52,3 @@ def test_lightcycles_starts_a_new_round_each_turn():
     assert max(len(r.trail) for r in mod.riders) > 10
     mod.on_enter()
     assert all(r.alive and len(r.trail) == 1 for r in mod.riders)
-
-
-def test_tv_static_tunes_in_fresh_each_turn():
-    size = Size(64, 32)
-    mod = TvStaticModule(make_ctx(size), TvStaticSettings(flip_every_s=2.0), seed=1)
-    run_frames(mod, size, 120)
-    mod.timer = 99.0
-    mod.on_enter()
-    assert mod.mode is Mode.STATIC and mod.timer == 0.0 and mod.channel == 0
