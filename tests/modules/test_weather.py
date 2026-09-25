@@ -12,14 +12,13 @@ from PIL import ImageChops
 
 from homely.core.module import FrameInfo
 from homely.modules.weather.colors import NIGHT, NOON, SUNRISE, sky_gradient, temp_color
-from homely.modules.weather.module import WeatherModule, _fit_label
+from homely.modules.weather.module import WeatherModule
 from homely.modules.weather.providers import Forecast, OpenMeteoProvider
 from homely.modules.weather.providers.open_meteo import parse_forecast
 from homely.modules.weather.settings import WeatherSettings
 from homely.modules.weather.solar import sun_times
 from homely.modules.weather.wmo import icon_for, label_for, short_label_for
 from homely.render.canvas import Canvas
-from homely.render.fonts import get_font
 from homely.render.size import SUPPORTED_SIZES, Size
 from tests.conftest import make_ctx
 from tests.golden_util import assert_golden
@@ -227,23 +226,71 @@ def test_feels_like_is_drawn_at_every_size(size, same_as_temp):
     assert ImageChops.difference(off, on).getbbox() is not None, size
 
 
-@pytest.mark.parametrize("size", [Size(128, 32), Size(128, 64), Size(64, 64)], ids=str)
-def test_long_conditions_shorten_rather_than_clip(size):
-    """ "Partly cloudy" in a narrow column used to come out as "Partly clou...";
-    it should fall back to the short label instead."""
+def _frames(mod: WeatherModule, size: Size, seconds: float, fps: int) -> list:
+    canvas = Canvas(size)
+    out = []
+    for i in range(int(seconds * fps)):
+        canvas.clear()
+        frame = FrameInfo(
+            now=NOW_DAY,
+            monotonic=100 + i / fps,
+            dt=1 / fps if i else 0.0,
+            index=i,
+            slot_elapsed=i / fps,
+            slot_duration=20,
+        )
+        mod.render(canvas, frame)
+        out.append(canvas.snapshot())
+    return out
+
+
+@pytest.mark.parametrize(
+    ("size", "code", "feels"),
+    [
+        (Size(128, 32), 2, True),  # "Partly cloudy" beside the temperature: a narrow column
+        (Size(32, 32), 2, True),
+        (Size(64, 64), 56, True),  # "Freezing drizzle", the longest label, is wider than 4x6 across 64
+        # 64x32 has no row left for the condition once feels-like takes one, so test it without.
+        (Size(64, 32), 56, False),
+    ],
+    ids=str,
+)
+def test_text_too_long_for_its_space_scrolls(size, code, feels):
+    """A condition too wide for its space used to be clipped ("Partly clou..."); it should
+    scroll instead, and the turn has to run at a frame rate that can show it moving."""
+    fc = fixture_forecast()
+    long_label = replace(fc, current=replace(fc.current, code=code, is_day=True))
+    mod = make_module(WeatherSettings(show_feels_like=feels), size, NOW_DAY, long_label)
+    mod.on_enter()
+    fps = mod.fps()
+    assert fps >= 20, "a turn with scrolling text must not run at 1 fps"
+    frames = _frames(mod, size, 6.0, fps)
+    # It holds still for the opening pause, then moves.
+    assert ImageChops.difference(frames[0], frames[fps // 2]).getbbox() is None
+    assert any(ImageChops.difference(frames[0], f).getbbox() is not None for f in frames[fps * 2 :])
+
+
+@pytest.mark.parametrize("size", [Size(128, 32), Size(64, 64)], ids=str)
+def test_text_that_fits_stays_still_at_one_fps(size):
+    fc = fixture_forecast()
+    sunny = replace(fc, current=replace(fc.current, code=0, is_day=True))  # "Sunny" fits anywhere
+    mod = make_module(WeatherSettings(show_place=False), size, NOW_DAY, sunny)
+    mod.on_enter()
+    assert mod.fps() == 1
+
+
+def test_scrolling_restarts_from_the_beginning_each_turn():
+    size = Size(128, 32)
     fc = fixture_forecast()
     partly = replace(fc, current=replace(fc.current, code=2, is_day=True))
-    img = render(make_module(WeatherSettings(show_feels_like=True), size, NOW_DAY, partly), size, NOW_DAY)
-    assert img.size == size.as_tuple()
-    fonts = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8", "4x6", "tom-thumb")]
-    narrowest = min(f.measure("Partly") for f in fonts)
-    for width in (narrowest, 40, 60, 90):
-        font, text = _fit_label(("Partly cloudy", "Partly"), fonts, width)
-        assert text in ("Partly cloudy", "Partly"), (width, text)  # whole, never clipped
-        assert font.measure(text) <= width
-    # Below that there is nothing left to shorten to, so it does fall back to clipping.
-    _, clipped = _fit_label(("Partly cloudy", "Partly"), fonts, narrowest - 4)
-    assert clipped not in ("Partly cloudy", "Partly")
+    mod = make_module(WeatherSettings(), size, NOW_DAY, partly)
+    mod.on_enter()
+    fps = mod.fps()
+    first = _frames(mod, size, 5.0, fps)
+    mod.on_enter()
+    mod.fps()
+    again = _frames(mod, size, 0.2, fps)
+    assert ImageChops.difference(first[0], again[0]).getbbox() is None
 
 
 def _status_frame() -> FrameInfo:

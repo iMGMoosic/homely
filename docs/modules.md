@@ -52,8 +52,10 @@ latitude, longitude, name and timezone.
 - **Feels-like**: `show_feels_like` adds the apparent temperature under the reading, on every
   layout. It is shown whenever the setting is on, including when it matches the temperature --
   hiding it then (most mild days) made the setting look broken.
-- **Condition text** falls back to the short label ("Partly" for "Partly cloudy") when the long
-  one will not fit its column, rather than being clipped mid-word.
+- **Long text scrolls.** The condition, the feels-like line and the place name are drawn in the
+  largest font they fit whole; when they fit none, they scroll through their space as a marquee
+  (with a pause at the start) instead of being clipped. A turn with anything to scroll runs at
+  30 fps; one with only still text stays at 1 fps.
 - Metric or imperial follows the global location units. The last forecast is cached on disk so a
   reboot shows weather immediately.
 
@@ -98,12 +100,13 @@ to the heading and scatters each bounce. Set it to 0 for billiard-ball bounces.
 - **Game of Life**: Conway's rules on a wrapping board (or hard edges). Newborn cells flash white
   and settle into the color; dying cells leave a fading ghost. A stalled or empty soup fades out
   and reseeds. `cell_px`, `generations_per_second`, `density`, `color_mode`.
-- **Lava lamp**: a turn starts the way a real lamp does -- everything pooled in one small mass at
-  the bottom, which peels off one blob at a time as it warms up. After that the blobs follow a
-  convection loop, climbing one side, drifting across the top, sinking down the other and
-  returning along the bottom; each leg is timed by its length so the pace stays even, and which
-  side rises varies by round. Palettes: `classic`, `ocean`, `toxic`, `sunset`, `ember`, `berry`,
-  `cyber`, `mint`, `gold`, `ice`, or your own three colors.
+- **Lava lamp**: like the real thing, a lump of lava sits pooled at the bottom centre, and blobs
+  peel off it one at a time -- a few seconds apart, and never all at once (at least 40% of them are
+  always in the lump). Each rides a convection loop up one side, across the top and down the
+  other, slides back along the bottom into the lump, rests there a while and goes round again.
+  The loop is paced by distance so the speed stays even, and which side rises varies by round. A
+  turn opens with everything in the lump. Palettes: `classic`, `ocean`, `toxic`, `sunset`,
+  `ember`, `berry`, `cyber`, `mint`, `gold`, `ice`, or your own three colors.
 - **TV static**: analog snow with a rolling bar and scanlines; every few seconds the set flips to a
   channel (color bars, a test card, NO SIGNAL, PLEASE STAND BY) and tears back to snow.
 - **Snake**: plays itself with a shortest-path search to the food, refusing moves that would cut
