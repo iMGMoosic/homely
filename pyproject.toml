@@ -33,6 +33,8 @@ dependencies = [
   "httpx>=0.27",
   "click>=8.1",
   "feedparser>=6.0",
+  "icalendar>=6.0",
+  "recurring-ical-events>=3.3",
 ]
 
 [project.optional-dependencies]
@@ -88,7 +90,7 @@ files = ["src/homely"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["rgbmatrix", "rgbmatrix.*", "yaml", "feedparser"]
+module = ["rgbmatrix", "rgbmatrix.*", "yaml", "feedparser", "recurring_ical_events"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

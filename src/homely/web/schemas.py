@@ -150,6 +150,11 @@ class GeocodeResult(BaseModel):
     label: str
 
 
+class TransitChoice(BaseModel):
+    id: str
+    label: str
+
+
 class LogLine(BaseModel):
     ts: str
     level: str

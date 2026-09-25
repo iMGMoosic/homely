@@ -4,6 +4,7 @@ export type Widget =
   | 'text'
   | 'textarea'
   | 'number'
+  | 'transit-stop'
   | 'slider'
   | 'toggle'
   | 'select'
@@ -38,6 +39,7 @@ export interface FieldSpec {
   default?: unknown;
   children?: FieldSpec[]; // for nested objects
   itemSchema?: JsonSchema;
+  options?: Record<string, unknown>; // widget-specific, from x-options
 }
 
 export interface FormSpec {
@@ -94,6 +96,7 @@ function pickWidget(s: JsonSchema, nullable: boolean): Widget {
       return 'toggle';
     case 'integer':
     case 'number':
+      if (x === 'transit-stop') return 'transit-stop';
       if (x === 'slider' && s.minimum !== undefined && s.maximum !== undefined) return 'slider';
       return 'number';
     case 'string':
@@ -152,6 +155,7 @@ export function normalize(root: JsonSchema, prefix = ''): FormSpec {
       order: typeof s['x-order'] === 'number' ? s['x-order'] : 1000 + i,
       default: s.default,
       itemSchema: s.items,
+      options: s['x-options'],
     };
     if (widget === 'object') {
       spec.children = normalize({ ...s, $defs: root.$defs }, spec.key).fields;
