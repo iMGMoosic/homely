@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
 from homely.core.module import FrameInfo
-from homely.modules.lavalamp.module import LavaLampModule
+from homely.modules.lavalamp.module import DEPART_GAP, LavaLampModule
 from homely.modules.lavalamp.settings import LavaLampSettings
 from homely.modules.life.module import LifeModule
 from homely.modules.life.settings import LifeSettings
@@ -107,39 +109,81 @@ def test_lava_blobs_stay_on_screen():
     assert lit(img) == 64 * 64  # background is never pure black
 
 
-def test_lava_starts_as_one_lump_at_the_bottom():
-    size = Size(64, 64)
-    mod = LavaLampModule(make_ctx(size), LavaLampSettings(), seed=3)
+def _lava_run(size: Size, seconds: float, **settings):
+    """Run a fresh lava turn, yielding (time, module) after every frame."""
+    mod = LavaLampModule(make_ctx(size), LavaLampSettings(**settings), seed=3)
     mod.on_enter()
-    run_frames(mod, size, 2)
-    # Everything pooled low and close together, not scattered over the panel.
+    canvas = Canvas(size)
+    for i in range(int(seconds * 30)):
+        canvas.clear()
+        mod.render(canvas, frame(1 / 30 if i else 0.0, i / 30))
+        yield i / 30, mod
+
+
+def test_lava_starts_as_one_central_lump_at_the_bottom():
+    size = Size(64, 64)
+    _, mod = next(_lava_run(size, 0.1))
+    assert all(b.resting for b in mod.blobs)
     assert all(b.y > size.h * 0.7 for b in mod.blobs), [b.y for b in mod.blobs]
-    span = max(b.x for b in mod.blobs) - min(b.x for b in mod.blobs)
-    assert span <= size.w * 0.45, span
+    xs = [b.x for b in mod.blobs]
+    assert max(xs) - min(xs) <= size.w * 0.45
+    assert abs(sum(xs) / len(xs) - size.w / 2) < size.w * 0.1  # centred, not off at one side
 
 
-def test_lava_circulates_up_one_side_and_down_the_other():
+@pytest.mark.parametrize("size", [Size(64, 64), Size(128, 32)], ids=str)
+def test_lava_lump_never_empties_and_blobs_leave_one_at_a_time(size):
+    """A real lamp keeps a mass at the bottom that blobs break away from and fall back into;
+    they do not all lift off together."""
+    departures: list[float] = []
+    prev: list[bool] | None = None
+    for t, mod in _lava_run(size, 90):
+        now = [b.resting for b in mod.blobs]
+        assert sum(now) >= len(now) - mod._max_travelling >= 1, t
+        if prev is not None:
+            departures += [t for was, is_ in zip(prev, now, strict=True) if was and not is_]
+        prev = now
+    assert len(departures) >= 8  # the loop keeps running the whole turn
+    gaps = [b - a for a, b in itertools.pairwise(departures)]
+    assert min(gaps) >= DEPART_GAP[0] - 0.05, gaps
+
+
+@pytest.mark.parametrize("size", [Size(64, 64), Size(128, 32)], ids=str)
+def test_lava_lump_stays_one_mass_as_blobs_come_and_go(size):
+    """With fixed places, the blobs left at home could be the two ends of the lump -- too far
+    apart to merge, so the lump vanished. They should close ranks instead."""
+    frames = spread_out = 0
+    for t, mod in _lava_run(size, 90):
+        home = sorted((b for b in mod.blobs if b.resting), key=lambda b: b.home_x)
+        if t < 1 or len(home) < 2:
+            continue
+        frames += 1
+        if any(b.home_x - a.home_x > 2 * min(a.radius, b.radius) for a, b in itertools.pairwise(home)):
+            spread_out += 1  # allowed briefly, while the lump makes room for a returning blob
+    assert spread_out / frames < 0.1, (spread_out, frames)
+
+
+def test_lava_circulates_up_one_side_and_down_the_other_then_rejoins_the_lump():
     """A lava lamp is a convection loop, not each blob bobbing on its own sine wave."""
     size = Size(64, 64)
-    mod = LavaLampModule(make_ctx(size), LavaLampSettings(blobs=4, speed=100), seed=3)
-    mod.on_enter()
-    blob = mod.blobs[0]
-    track: list[tuple[float, float]] = []
-    canvas = Canvas(size)
-    for i in range(30 * 60):
-        canvas.clear()
-        mod.render(canvas, frame(1 / 30, i / 30))
-        track.append((blob.x, blob.y))
-    up_x, down_x = blob.up_x, blob.down_x
-    # It climbs on the up side and sinks on the down side, never the reverse.
-    climbing = [x for (x, y), (_, prev_y) in zip(track[1:], track, strict=False) if y < prev_y - 0.05]
-    sinking = [x for (x, y), (_, prev_y) in zip(track[1:], track, strict=False) if y > prev_y + 0.05]
+    track: list[tuple[float, float, bool]] = []
+    mod = None
+    for _, mod in _lava_run(size, 60, blobs=4, speed=100):
+        blob = mod.blobs[0]
+        track.append((blob.x, blob.y, blob.resting))
+    assert mod is not None
+    up_x = mod._left if mod._rising_left else mod._right
+    down_x = mod._right if mod._rising_left else mod._left
+    moving = [(x, y) for x, y, resting in track if not resting]
+    climbing = [x for (_, prev_y), (x, y) in itertools.pairwise(moving) if y < prev_y - 0.05]
+    sinking = [x for (_, prev_y), (x, y) in itertools.pairwise(moving) if y > prev_y + 0.05]
     assert climbing and sinking
     assert abs(sum(climbing) / len(climbing) - up_x) < abs(sum(climbing) / len(climbing) - down_x)
     assert abs(sum(sinking) / len(sinking) - down_x) < abs(sum(sinking) / len(sinking) - up_x)
-    # And it goes all the way round rather than hovering at one height.
-    ys = [y for _, y in track]
+    # It went all the way round, and it came home: there is a stretch in the lump after a trip.
+    ys = [y for _, y, _ in track]
     assert max(ys) - min(ys) > size.h * 0.5
+    states = [resting for *_, resting in track]
+    assert any(not a and b for a, b in itertools.pairwise(states))
 
 
 @pytest.mark.parametrize("palette", ["classic", "ocean", "toxic", "sunset"])

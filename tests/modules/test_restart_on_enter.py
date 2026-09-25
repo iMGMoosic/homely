@@ -16,9 +16,10 @@ from homely.render.canvas import Canvas
 from homely.render.size import Size
 from tests.conftest import FROZEN, make_ctx
 
-# Modules whose whole output is derived from the clock or from polled data: there is nothing
-# for a turn to restart, so they keep the base class's do-nothing on_enter.
-STATELESS = {"clock", "weather"}
+# Modules whose whole output is derived from the clock: there is nothing for a turn to restart,
+# so they keep the base class's do-nothing on_enter. (Weather used to be here too, until its
+# long text started scrolling -- each turn now starts its marquees from the beginning.)
+STATELESS = {"clock"}
 
 
 def run_frames(mod, size: Size, n: int, dt: float = 1 / 30):

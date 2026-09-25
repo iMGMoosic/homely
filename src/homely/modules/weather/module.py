@@ -15,14 +15,14 @@ from homely.modules.weather.colors import NIGHT, sky_gradient, temp_color
 from homely.modules.weather.providers import PROVIDERS, Current, Daily, Forecast, WeatherProvider
 from homely.modules.weather.settings import WeatherSettings
 from homely.modules.weather.solar import SunTimes, sun_times
-from homely.modules.weather.wmo import icon_for, label_for, short_label_for
+from homely.modules.weather.wmo import icon_for, label_for
 from homely.render.canvas import Canvas
 from homely.render.color import AMBER, Color, dim, lerp, parse_color
 from homely.render.fonts import get_font
 from homely.render.fonts.bdf import BitmapFont
 from homely.render.layout import layout, layout_fallback
 from homely.render.size import Size
-from homely.render.text import fit_text
+from homely.render.text import Marquee, fit_text
 from homely.render.weather_icons import draw_weather_icon
 
 STALE_AFTER = timedelta(hours=3)
@@ -32,6 +32,8 @@ LO_COLOR: Color = (120, 190, 255)
 BAR_COLOR: Color = (60, 150, 255)
 STRIP_W = 2
 WIDE_PANEL_W = 96  # at or above this width the automatic forecast shows five days
+SCROLL_FPS = 30  # frame rate for a turn that has text to scroll; still text needs 1
+SCROLL_SPEED = 18.0  # pixels per second
 
 
 def deg(t: float) -> str:
@@ -56,6 +58,8 @@ class WeatherModule(Module[WeatherSettings]):
         self.forecast: DataSlot[Forecast] = DataSlot()
         self._provider: WeatherProvider | None = None
         self._warned_no_location = False
+        self._marquees: dict[tuple[str, str, int], Marquee] = {}
+        self._scrolling = False
 
     # ---- data ----------------------------------------------------------------------
 
@@ -123,6 +127,62 @@ class WeatherModule(Module[WeatherSettings]):
         c.text_centered(top, htext, hf, text)
         if fits_detail:
             c.text_centered(top + hf.line_height + 2, dtext, df, dim(text, 0.7))
+
+    # ---- scrolling text ----------------------------------------------------------------
+
+    def on_enter(self) -> None:
+        # Each turn starts every scrolling line from the beginning, pause included.
+        self._marquees = {}
+
+    def fps(self) -> int:
+        """1 fps is plenty for still text, but a marquee needs a real frame rate.
+
+        The scheduler asks once, as the turn starts, so find out now whether anything on this
+        panel is going to scroll by laying the opening page out on a scratch canvas.
+        """
+        if not self.forecast.has_value:
+            return self.info.default_fps
+        probe = FrameInfo(
+            now=self.ctx.now(), monotonic=0.0, dt=0.0, index=0, slot_elapsed=0.0, slot_duration=self.duration()
+        )
+        self._scrolling = False
+        self.render(Canvas(self.ctx.size), probe)
+        return SCROLL_FPS if self._scrolling else self.info.default_fps
+
+    def render(self, canvas: Canvas, frame: FrameInfo) -> None:
+        for m in self._marquees.values():
+            m.advance(frame.dt)
+        super().render(canvas, frame)
+
+    def _label(
+        self,
+        c: Canvas,
+        x: int,
+        y: int,
+        text: str,
+        fonts: Sequence[BitmapFont],
+        max_w: int,
+        color: Color,
+        *,
+        centered: bool = False,
+    ) -> BitmapFont:
+        """Draw text in the largest font it fits whole; if it fits none, scroll it.
+
+        Scrolling uses the largest font too: once the text is moving its width no longer
+        matters, so there is no reason to squint at it. Returns the font used, for spacing.
+        """
+        for font in fonts:
+            if font.measure(text) <= max_w:
+                c.text(x + ((max_w - font.measure(text)) // 2 if centered else 0), y, text, font, color)
+                return font
+        font = fonts[0]
+        key = (text, font.name, max_w)
+        marquee = self._marquees.get(key)
+        if marquee is None:
+            marquee = self._marquees[key] = Marquee(text, font, max_w, speed=SCROLL_SPEED, gap=12, pause_s=1.5)
+        self._scrolling = True
+        marquee.draw(c, x, y, color)
+        return font
 
     # ---- shared drawing --------------------------------------------------------------
 
@@ -256,10 +316,8 @@ class WeatherModule(Module[WeatherSettings]):
             area.text_centered(y, feels, get_font("4x6"), dim(text, 0.7))
             y += 8
         if self.settings.show_condition:
-            f, label = fit_text(
-                label_for(cur.code, cur.is_day), [get_font("6x10"), get_font("5x8"), get_font("4x6")], area.width
-            )
-            area.text_centered(y, label, f, text)
+            conditions = [get_font("6x10"), get_font("5x8"), get_font("4x6")]
+            f = self._label(area, 0, y, label_for(cur.code, cur.is_day), conditions, area.width, text, centered=True)
             y += f.line_height + 1
         today = fc.today()
         if today is not None:
@@ -271,8 +329,16 @@ class WeatherModule(Module[WeatherSettings]):
             area.text(x + f58.measure(hi) + 6, y, lo, f58, LO_COLOR)
             y += 10
         if self.settings.show_place and self.ctx.location.config.name:
-            f, place = fit_text(self.ctx.location.config.name, [get_font("4x6"), get_font("tom-thumb")], area.width)
-            area.text_centered(max(y, area.height - 7), place, f, dim(text, 0.7))
+            self._label(
+                area,
+                0,
+                max(y, area.height - 7),
+                self.ctx.location.config.name,
+                [get_font("4x6"), get_font("tom-thumb")],
+                area.width,
+                dim(text, 0.7),
+                centered=True,
+            )
 
     def _forecast_page(self, area: Canvas, fc: Forecast, now: datetime, *, icon: int) -> None:
         text = self._text_color()
@@ -355,7 +421,7 @@ class WeatherModule(Module[WeatherSettings]):
         today = fc.today()
         small = get_font("4x6") if w >= 40 else get_font("tom-thumb")
         tiny = small.name == "tom-thumb"
-        label = label_for(cur.code, cur.is_day) if w >= 60 else short_label_for(cur.code, cur.is_day)
+        label = label_for(cur.code, cur.is_day)
         feels = self._feels_text(cur)
         spare = right_w - font.measure(temp) - 4
         if spare >= 40:
@@ -370,15 +436,14 @@ class WeatherModule(Module[WeatherSettings]):
             col_x = right_x + max(font.measure(temp), small.measure(feels) if show_feels else 0) + 6
             col_w = w - col_x
             big = [get_font(n) for n in ("10x20", "9x15", "7x13B", "6x10", "5x8")]
-            cf, ctext = _fit_label(
-                (label, short_label_for(cur.code, cur.is_day)),
-                [f for f in big if f.line_height <= (h - 4) // 2] or [small],
-                col_w,
-            )
+            col_fonts = [f for f in big if f.line_height <= (h - 4) // 2] or [small]
             hl = get_font("6x10") if h >= 48 else small
+            # Whichever font the condition ends up in, it is the first one that fits the text
+            # whole, or else the first in the list (scrolling): work out which before placing.
+            cf = next((f for f in col_fonts if f.measure(label) <= col_w), col_fonts[0])
             block_h = cf.line_height + 2 + hl.line_height
             cy = max(0, (h - block_h) // 2)
-            area.text(col_x, cy, ctext, cf, text)
+            self._label(area, col_x, cy, label, col_fonts, col_w, text)
             if today is not None:
                 hi, lo = _hilo(today.tmax, today.tmin, hl.name == "tom-thumb")
                 area.text(col_x, cy + cf.line_height + 2, hi, hl, HI_COLOR)
@@ -396,12 +461,10 @@ class WeatherModule(Module[WeatherSettings]):
             area.text(x + small.measure(hi) + 4, y, lo, small, LO_COLOR)
             y += small.line_height + 1
         if feels and h - y >= small.line_height:
-            f, ftext = fit_text(feels, [small, get_font("tom-thumb")], w)
-            area.text_centered(y, ftext, f, dim(text, 0.7))
+            f = self._label(area, 0, y, feels, [small, get_font("tom-thumb")], w, dim(text, 0.7), centered=True)
             y += f.line_height + 1
         if self.settings.show_condition and h - y >= small.line_height:
-            f, label = fit_text(label, [small, get_font("tom-thumb")], w)
-            area.text_centered(y, label, f, text)
+            self._label(area, 0, y, label, [small, get_font("tom-thumb")], w, text, centered=True)
 
     def _current_tall(self, area: Canvas, fc: Forecast, now: datetime) -> None:
         cur = fc.current
@@ -431,25 +494,12 @@ class WeatherModule(Module[WeatherSettings]):
             area.text_centered(y, feels, small, dim(text, 0.7))
             y += small.line_height + 1
         if self.settings.show_condition and h - y >= 6:
-            f, label = fit_text(short_label_for(cur.code, cur.is_day), [small, get_font("tom-thumb")], w)
-            area.text_centered(y, label, f, text)
+            label = label_for(cur.code, cur.is_day)
+            f = self._label(area, 0, y, label, [small, get_font("tom-thumb")], w, text, centered=True)
             y += f.line_height + 3
         days = self._upcoming_days(fc, now)
         if days and h - y >= 40:
             self._forecast_rows(area.sub(0, y, w, h - y), fc, now, days)
-
-
-def _fit_label(variants: Sequence[str], fonts: Sequence[BitmapFont], max_w: int) -> tuple[BitmapFont, str]:
-    """First variant that fits whole, in the largest font that takes it.
-
-    Shortening "Partly cloudy" to "Partly" reads better than letting fit_text clip the long
-    one to "Partly clou...", which is what a narrow condition column used to show.
-    """
-    for variant in variants:
-        for font in fonts:
-            if font.measure(variant) <= max_w:
-                return font, variant
-    return fit_text(variants[-1], fonts, max_w)  # nothing fits: truncate the shortest
 
 
 def _hilo(tmax: float, tmin: float, tiny: bool) -> tuple[str, str]:
