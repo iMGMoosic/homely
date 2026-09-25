@@ -137,3 +137,60 @@ class Marquee:
         clip.text(-off, 0, self.text, self.font, color)
         # Draw the wrapped copy following the gap so the loop is seamless.
         clip.text(-off + self.scroll_distance, 0, self.text, self.font, color)
+
+
+class ScrollingLabels:
+    """Text that will not fit scrolls instead of clipping: one ``Marquee`` per label.
+
+    ``draw`` puts text in the largest of ``fonts`` it fits whole; if it fits none, it scrolls
+    in the largest font (once text is moving its width no longer matters). Marquees are keyed
+    by text, font and width so a label keeps its scroll position from frame to frame.
+
+    A module calls ``advance(dt)`` once per frame, ``reset()`` from ``on_enter`` so each turn
+    starts every line from the beginning, and reads ``scrolled`` after laying out a probe frame
+    to decide whether the turn needs a real frame rate.
+    """
+
+    def __init__(self, *, speed: float = 18.0, gap: int = 12, pause_s: float = 1.5) -> None:
+        self.speed = speed
+        self.gap = gap
+        self.pause_s = pause_s
+        self._marquees: dict[tuple[str, str, int], Marquee] = {}
+        self.scrolled = False
+
+    def reset(self) -> None:
+        self._marquees = {}
+
+    def advance(self, dt: float) -> None:
+        for m in self._marquees.values():
+            m.advance(dt)
+
+    def draw(
+        self,
+        c: Canvas,
+        x: int,
+        y: int,
+        text: str,
+        fonts: Sequence[BitmapFont],
+        max_w: int,
+        color: Color,
+        *,
+        align: str = "left",
+    ) -> BitmapFont:
+        """Draw text; returns the font used, for spacing."""
+        for font in fonts:
+            w = font.measure(text)
+            if w <= max_w:
+                dx = (max_w - w) // 2 if align == "center" else (max_w - w) if align == "right" else 0
+                c.text(x + dx, y, text, font, color)
+                return font
+        font = fonts[0]
+        key = (text, font.name, max_w)
+        marquee = self._marquees.get(key)
+        if marquee is None:
+            marquee = self._marquees[key] = Marquee(
+                text, font, max_w, speed=self.speed, gap=self.gap, pause_s=self.pause_s
+            )
+        self.scrolled = True
+        marquee.draw(c, x, y, color)
+        return font

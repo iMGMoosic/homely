@@ -22,7 +22,8 @@ from homely.render.fonts import get_font
 from homely.render.fonts.bdf import BitmapFont
 from homely.render.layout import layout, layout_fallback
 from homely.render.size import Size
-from homely.render.text import Marquee, fit_text
+from homely.render.status import draw_status_card
+from homely.render.text import ScrollingLabels, fit_text
 from homely.render.weather_icons import draw_weather_icon
 
 STALE_AFTER = timedelta(hours=3)
@@ -58,8 +59,7 @@ class WeatherModule(Module[WeatherSettings]):
         self.forecast: DataSlot[Forecast] = DataSlot()
         self._provider: WeatherProvider | None = None
         self._warned_no_location = False
-        self._marquees: dict[tuple[str, str, int], Marquee] = {}
-        self._scrolling = False
+        self._labels = ScrollingLabels(speed=SCROLL_SPEED, gap=12, pause_s=1.5)
 
     # ---- data ----------------------------------------------------------------------
 
@@ -114,25 +114,14 @@ class WeatherModule(Module[WeatherSettings]):
 
     def _draw_status(self, c: Canvas) -> None:
         msg = self._status_message()
-        if msg is None:
-            return
-        head, detail = msg
-        text = self._text_color()
-        c.clear((18, 20, 30))
-        fonts = [get_font(n) for n in ("6x10", "5x8", "4x6", "tom-thumb")]
-        hf, htext = fit_text(head, fonts, c.width - 2)
-        df, dtext = fit_text(detail, [get_font("4x6"), get_font("tom-thumb")], c.width - 2)
-        fits_detail = c.height >= hf.line_height + df.line_height + 3
-        top = (c.height - (hf.line_height + (df.line_height + 2 if fits_detail else 0))) // 2
-        c.text_centered(top, htext, hf, text)
-        if fits_detail:
-            c.text_centered(top + hf.line_height + 2, dtext, df, dim(text, 0.7))
+        if msg is not None:
+            draw_status_card(c, *msg, self._text_color())
 
     # ---- scrolling text ----------------------------------------------------------------
 
     def on_enter(self) -> None:
         # Each turn starts every scrolling line from the beginning, pause included.
-        self._marquees = {}
+        self._labels.reset()
 
     def fps(self) -> int:
         """1 fps is plenty for still text, but a marquee needs a real frame rate.
@@ -145,13 +134,12 @@ class WeatherModule(Module[WeatherSettings]):
         probe = FrameInfo(
             now=self.ctx.now(), monotonic=0.0, dt=0.0, index=0, slot_elapsed=0.0, slot_duration=self.duration()
         )
-        self._scrolling = False
+        self._labels.scrolled = False
         self.render(Canvas(self.ctx.size), probe)
-        return SCROLL_FPS if self._scrolling else self.info.default_fps
+        return SCROLL_FPS if self._labels.scrolled else self.info.default_fps
 
     def render(self, canvas: Canvas, frame: FrameInfo) -> None:
-        for m in self._marquees.values():
-            m.advance(frame.dt)
+        self._labels.advance(frame.dt)
         super().render(canvas, frame)
 
     def _label(
@@ -166,23 +154,8 @@ class WeatherModule(Module[WeatherSettings]):
         *,
         centered: bool = False,
     ) -> BitmapFont:
-        """Draw text in the largest font it fits whole; if it fits none, scroll it.
-
-        Scrolling uses the largest font too: once the text is moving its width no longer
-        matters, so there is no reason to squint at it. Returns the font used, for spacing.
-        """
-        for font in fonts:
-            if font.measure(text) <= max_w:
-                c.text(x + ((max_w - font.measure(text)) // 2 if centered else 0), y, text, font, color)
-                return font
-        font = fonts[0]
-        key = (text, font.name, max_w)
-        marquee = self._marquees.get(key)
-        if marquee is None:
-            marquee = self._marquees[key] = Marquee(text, font, max_w, speed=SCROLL_SPEED, gap=12, pause_s=1.5)
-        self._scrolling = True
-        marquee.draw(c, x, y, color)
-        return font
+        """Draw text in the largest font it fits whole; if it fits none, scroll it."""
+        return self._labels.draw(c, x, y, text, fonts, max_w, color, align="center" if centered else "left")
 
     # ---- shared drawing --------------------------------------------------------------
 

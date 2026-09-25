@@ -1,6 +1,7 @@
 <script lang="ts">
   import { defaultsFor, normalize, type FieldSpec } from './normalize';
   import Toggle from '../ui/Toggle.svelte';
+  import StopPicker from '../transit/StopPicker.svelte';
   import Self from './Field.svelte';
 
   let {
@@ -21,6 +22,7 @@
   const isSecretSet = $derived(value && typeof value === 'object' && value.$secret === true);
   let secretDraft = $state('');
   let listDraft = $state('');
+  let pickedStop = $state('');
   const TIMEZONES = (Intl as any).supportedValuesOf
     ? ((Intl as any).supportedValuesOf('timeZone') as string[])
     : [];
@@ -134,6 +136,28 @@
         value={value ?? ''}
         placeholder={spec.placeholder}
         oninput={num}
+      />
+    {:else if spec.widget === 'transit-stop'}
+      <input
+        {id}
+        type="number"
+        class="input"
+        class:invalid={!!error}
+        inputmode="numeric"
+        min={spec.minimum}
+        step="1"
+        value={value ?? ''}
+        placeholder={spec.placeholder ?? 'e.g. 56334'}
+        oninput={num}
+      />
+      {#if pickedStop}<div class="help">{pickedStop}</div>{/if}
+      <StopPicker
+        provider={String(spec.options?.provider ?? 'metro_transit')}
+        onpick={(stopId, label) => {
+          value = stopId;
+          pickedStop = `${label} (stop ${stopId})`;
+          onchange?.();
+        }}
       />
     {:else if spec.widget === 'color'}
       <div class="row">

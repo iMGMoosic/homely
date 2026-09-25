@@ -9,6 +9,7 @@ import type {
   SettingsPayload,
   StateInfo,
   SystemInfo,
+  TransitChoice,
 } from './types';
 
 export class ApiRequestError extends Error {
@@ -77,6 +78,23 @@ export const api = {
   action: (name: string) => request<ActionResult>('POST', `/api/system/actions/${name}`),
   logs: (level: string, limit = 200) =>
     request<LogLine[]>('GET', `/api/logs?level=${level}&limit=${limit}`),
+  transitRoutes: (provider: string) =>
+    request<TransitChoice[]>('GET', `/api/transit/${encodeURIComponent(provider)}/routes`),
+  transitDirections: (provider: string, route: string) =>
+    request<TransitChoice[]>(
+      'GET',
+      `/api/transit/${encodeURIComponent(provider)}/directions?route=${encodeURIComponent(route)}`,
+    ),
+  transitStops: (provider: string, route: string, direction: string) =>
+    request<TransitChoice[]>(
+      'GET',
+      `/api/transit/${encodeURIComponent(provider)}/stops?route=${encodeURIComponent(route)}&direction=${encodeURIComponent(direction)}`,
+    ),
+  transitStop: (provider: string, route: string, direction: string, place: string) =>
+    request<TransitChoice>(
+      'GET',
+      `/api/transit/${encodeURIComponent(provider)}/stop?route=${encodeURIComponent(route)}&direction=${encodeURIComponent(direction)}&place=${encodeURIComponent(place)}`,
+    ),
   geocode: (q: string) =>
     request<GeocodeResult[]>('GET', `/api/geocode?q=${encodeURIComponent(q)}`),
 };

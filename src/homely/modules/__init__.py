@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from homely.core.module import Module
+from homely.modules.calendar import CalendarModule
 from homely.modules.clock import ClockModule
 from homely.modules.lavalamp import LavaLampModule
 from homely.modules.life import LifeModule
@@ -14,7 +15,9 @@ from homely.modules.news import NewsModule
 from homely.modules.qix import QixModule
 from homely.modules.skyline import SkylineModule
 from homely.modules.snake import SnakeModule
+from homely.modules.sports import SportsModule
 from homely.modules.starfield import StarfieldModule
+from homely.modules.transit import TransitModule
 from homely.modules.tree import TreeModule
 from homely.modules.weather import WeatherModule
 
@@ -24,6 +27,9 @@ def builtin_modules() -> list[type[Module[Any]]]:
         ClockModule,
         WeatherModule,
         NewsModule,
+        TransitModule,
+        SportsModule,
+        CalendarModule,
         MazeModule,
         QixModule,
         StarfieldModule,

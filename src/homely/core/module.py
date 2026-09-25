@@ -35,8 +35,8 @@ class ModuleSettings(BaseModel):
 
     Declare fields with ``Field(title=..., description=..., json_schema_extra={...})``.
     Recognised UI hints in json_schema_extra: ``x-widget`` (color, slider, textarea,
-    string-list, location, time, timezone, hidden), ``x-group``, ``x-order``, ``x-unit``,
-    ``x-placeholder``, ``x-help``.
+    string-list, location, time, timezone, transit-stop, hidden), ``x-options`` (widget-specific
+    settings), ``x-group``, ``x-order``, ``x-unit``, ``x-placeholder``, ``x-help``.
     """
 
     model_config = ConfigDict(extra="forbid")

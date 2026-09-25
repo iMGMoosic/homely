@@ -12,9 +12,9 @@
 | Snake, Growing tree (idle animations) | Need | available | none |
 | Skyline (day/night idle animation) | Need | available | sun times for your location |
 | Light cycles (idle animation) | Need | available | none |
-| Sports scores | Want | planned | MLB Stats API, then NFL/NHL/NBA |
-| Transit | Want | planned | Metro Transit NexTrip (Minneapolis/St. Paul), then GTFS-RT |
-| Calendar | Want | planned | ICS URL |
+| Transit | Want | available | Metro Transit NexTrip (Minneapolis/St. Paul), pluggable providers |
+| Sports scores | Want | available | MLB Stats API, NHL web API, ESPN (NFL, NBA, WNBA, MLS, Premier League) |
+| Calendar | Want | available | ICS links |
 | Arcade game | Looks cool | planned | USB controller |
 | Stocks | Looks cool | planned | Finnhub |
 | Spotify | Looks cool | planned | Spotify Web API (your own client id) |
@@ -69,6 +69,58 @@ few headlines (`headlines_per_slot`, 10 seconds each by default via `seconds_per
 wrapped to fit, with the source name in its color and the item age. Feeds are fetched with
 conditional requests (ETag/Last-Modified), one bad feed never blocks the others, and
 `mix: interleave` takes turns between sources.
+
+## Transit
+
+Next departures from one stop, from Metro Transit's public NexTrip API (no key). Enter the stop
+number from the sign, or use **Find by route** in the settings to pick route, direction and stop.
+Add the module more than once for more stops (home, work).
+
+- **One row per route** (`group_by_route`, the default): the route badge, the destination and the
+  next few departures. Off gives one row per departure instead.
+- **Real-time vs timetable**: departures the agency is tracking count down in minutes (`Due`,
+  `4m`); timetable-only departures show their clock time, dimmer, as Metro Transit's own signs do.
+- **Badges** use the line colors for the Blue, Green, Red, Orange and Gold lines (as `BLU`, `GRN`,
+  ...) and red for the A-F rapid-bus lines; plain buses use `bus_color`.
+- `walk_minutes` hides departures you could not make; `max_minutes` is the look-ahead, and with
+  nothing inside it the turn is skipped. `routes` limits the board to some routes.
+- 128x32 shows three routes on one line each; square and tall panels stack the destination under
+  the badge and times. A long stop name or destination scrolls.
+- `show_alerts` scrolls the agency's alerts for the stop along the bottom row.
+
+Provider interface: `homely.modules.transit.providers.TransitProvider` (departures plus the four
+picker lookups). Register a new agency in `PROVIDERS`.
+
+## Sports
+
+Today's games for the leagues you enable, as cards with each team's color: a 128x32 board shows
+two cards side by side, square and tall boards stack them, and a lone game fills the whole panel
+with full team names. Live baseball shows the inning, runners on base and outs; hockey, football
+and basketball show period and clock; finished games dim the loser.
+
+- **Favorites** are abbreviations or names (`MIN`, `Twins`); `MIN` matches every Minnesota team in
+  the enabled leagues, `nhl:MIN` just the Wild. `show: favorites_first` (default) puts them first,
+  `favorites_only` skips the turn when none of them play, `all` ignores them.
+- The day rolls over at 5 AM, so a late West Coast game still shows the next morning.
+- Scores refresh every 30 seconds while a game you would see is live or starts within 15 minutes,
+  and every `refresh_minutes` otherwise. One league's outage does not hide the others.
+- Sources: MLB Stats API and the NHL's web API (both official, no key), ESPN's unofficial
+  scoreboard for everything else (with a second host to fall back on when one refuses).
+
+## Calendar
+
+Upcoming events from one or more ICS links (Google Calendar: *Settings → your calendar → Secret
+address in iCal format*; iCloud and Outlook publish them too; `webcal://` links work). Recurring
+events and exceptions are expanded; cancelled events are left out.
+
+- Pages are headed by the day (`Today`, `Tomorrow`, `Tue 15`); several days share a page when
+  they fit. Each event has a bar in its calendar's color; an event under way shows `now`.
+- Square and tall panels put the time range above the title; 128x32 shows three events on one
+  line each. Long titles scroll.
+- `days_ahead`, `show_all_day`, `max_events` and `seconds_per_page` shape the turn. With nothing
+  coming up the turn is skipped unless `show_when_empty` is on.
+- A secret ICS address is stored in `config.yaml` on the Pi like the other settings; anyone who
+  can read that file or open the web UI can see it.
 
 ## Maze (idle animation)
 

@@ -105,6 +105,11 @@ export interface GeocodeResult {
   label: string;
 }
 
+export interface TransitChoice {
+  id: string;
+  label: string;
+}
+
 export interface LogLine {
   ts: string;
   level: 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR';

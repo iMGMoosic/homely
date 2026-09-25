@@ -198,3 +198,40 @@ def test_logs_endpoint_returns_recent_lines(client: TestClient):
     msgs = [ln["message"] for ln in r.json()]
     assert "hello from the test 42" in msgs and "too quiet" not in msgs
     assert client.get("/api/logs?level=LOUD").status_code == 422
+
+
+def test_transit_stop_picker_walks_route_direction_stop(client: TestClient, rt: Runtime):
+    import httpx
+
+    from homely.web.routers import transit
+
+    transit._cache.clear()
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/nextrip/")
+        seen.append(path)
+        if path == "routes":
+            return httpx.Response(200, json=[{"route_id": "901", "agency_id": 0, "route_label": "METRO Blue Line"}])
+        if path == "directions/901":
+            return httpx.Response(200, json=[{"direction_id": 1, "direction_name": "Southbound"}])
+        if path == "stops/901/1":
+            return httpx.Response(200, json=[{"place_code": "TF2", "description": "Target Field Station Platform 2"}])
+        if path == "901/1/TF2":
+            return httpx.Response(
+                200, json={"stops": [{"stop_id": 56334, "description": "Target Field Station Platform 2"}]}
+            )
+        return httpx.Response(400, json={"detail": "Invalid route_id or route is not in service"})
+
+    rt.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    assert client.get("/api/transit/metro_transit/routes").json() == [{"id": "901", "label": "METRO Blue Line"}]
+    assert client.get("/api/transit/metro_transit/routes").status_code == 200 and seen.count("routes") == 1
+    assert client.get("/api/transit/metro_transit/directions?route=901").json()[0]["label"] == "Southbound"
+    stops = client.get("/api/transit/metro_transit/stops?route=901&direction=1").json()
+    assert stops == [{"id": "TF2", "label": "Target Field Station Platform 2"}]
+    stop = client.get("/api/transit/metro_transit/stop?route=901&direction=1&place=TF2").json()
+    assert stop == {"id": "56334", "label": "Target Field Station Platform 2"}
+    r = client.get("/api/transit/metro_transit/directions?route=21")
+    assert r.status_code == 404 and "not in service" in r.json()["detail"]
+    assert client.get("/api/transit/nope/routes").status_code == 404
+    assert client.get("/api/transit/metro_transit/directions?route=../x").status_code == 422
