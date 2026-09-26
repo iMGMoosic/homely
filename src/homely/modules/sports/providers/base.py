@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import colorsys
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from typing import Any, Literal, Protocol
+
+from homely.modules.sports.teams import PALETTES, Palette
+from homely.render.color import readable_on
 
 State = Literal["pre", "live", "final", "off"]  # off = postponed, suspended, cancelled
 
@@ -15,7 +17,7 @@ class Team:
     abbr: str
     name: str  # short name riders of the bus would say: "Twins", "Wild"
     score: int | None
-    color: str = ""  # hex without '#', may be empty
+    color: str = ""  # ESPN's primary color, hex without '#'; empty for MLB and NHL (see teams.py)
     alt_color: str = ""
 
 
@@ -71,21 +73,27 @@ def to_int(v: Any) -> int | None:
         return None
 
 
-def team_color(primary: str, alternate: str) -> tuple[int, int, int]:
-    """The team color to paint on an LED panel.
+def _hex(value: str) -> tuple[int, int, int] | None:
+    if len(value) != 6:
+        return None
+    try:
+        return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
+    except ValueError:
+        return None
 
-    Prefer the primary color when it has some hue to it; many teams' primary is black or a
-    near-black navy, and black is invisible, so fall back to the alternate, then to white-ish
-    for teams that are genuinely black-and-silver.
+
+def palette_for(league: str, team: Team) -> Palette:
+    """The team's palette from the table; for leagues it does not cover, built from ESPN's colors.
+
+    ESPN sends a primary and an alternate color: the primary becomes the band, the alternate the
+    bar, and the text is black or white, whichever reads on the band.
     """
-    candidates = [c for c in (primary, alternate) if len(c) == 6]
-    for c in candidates:
-        r, g, b = (int(c[i : i + 2], 16) / 255 for i in (0, 2, 4))
-        _, s, v = colorsys.rgb_to_hsv(r, g, b)
-        if s >= 0.3 and v >= 0.12:
-            return (round(r * 255), round(g * 255), round(b * 255))
-    for c in candidates:
-        r, g, b = (int(c[i : i + 2], 16) for i in (0, 2, 4))
-        if max(r, g, b) >= 128:
-            return (r, g, b)
-    return (200, 200, 200)
+    table = PALETTES.get(league, {})
+    if team.abbr in table:
+        return table[team.abbr]
+    home = _hex(team.color) or UNKNOWN.home
+    accent = _hex(team.alt_color) or home
+    return Palette(home, readable_on(home), accent)
+
+
+UNKNOWN = Palette((40, 40, 40), (221, 221, 221), (120, 120, 120))

@@ -93,10 +93,16 @@ picker lookups). Register a new agency in `PROVIDERS`.
 
 ## Sports
 
-Today's games for the leagues you enable, as cards with each team's color: a 128x32 board shows
+Today's games for the leagues you enable, as cards in each team's colors: a 128x32 board shows
 two cards side by side, square and tall boards stack them, and a lone game fills the whole panel
 with full team names. Live baseball shows the inning, runners on base and outs; hockey, football
-and basketball show period and clock; finished games dim the loser.
+and basketball show period and clock; finished games grey out the loser's row.
+
+- **Team colors** work as on the MLB LED scoreboard: each team has a band color behind its row, a
+  text color for its name and score, and an accent color for the bar at the row's edge. MLB, NFL,
+  NBA and NHL palettes live in `modules/sports/teams.py` and are drawn exactly as written; other
+  leagues use ESPN's colors (band and bar) with black or white text. Turning off
+  `team_backgrounds` draws names on black beside a color bar.
 
 - **Favorites** are abbreviations or names (`MIN`, `Twins`); `MIN` matches every Minnesota team in
   the enabled leagues, `nhl:MIN` just the Wild. `show: favorites_first` (default) puts them first,

@@ -8,7 +8,6 @@ from typing import Any
 import httpx
 
 from homely.modules.sports.providers.base import Game, State, Team, to_int
-from homely.modules.sports.teams import MLB
 
 SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule"
 
@@ -33,13 +32,10 @@ def _state(status: dict[str, Any]) -> tuple[State, str]:
 def _team(side: dict[str, Any]) -> Team:
     t = side.get("team", {})
     abbr = str(t.get("abbreviation") or t.get("teamCode", "?")).upper()
-    primary, alt = MLB.get(abbr, ("", ""))
     return Team(
         abbr=abbr,
         name=str(t.get("teamName") or t.get("clubName") or abbr),
         score=to_int(side.get("score")),
-        color=primary,
-        alt_color=alt,
     )
 
 

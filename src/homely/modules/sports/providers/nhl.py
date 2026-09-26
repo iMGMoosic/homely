@@ -8,21 +8,17 @@ from typing import Any
 import httpx
 
 from homely.modules.sports.providers.base import Game, State, Team, to_int
-from homely.modules.sports.teams import NHL
 
 SCORE_URL = "https://api-web.nhle.com/v1/score/{day}"
 
 
 def _team(t: dict[str, Any]) -> Team:
     abbr = str(t.get("abbrev", "?")).upper()
-    primary, alt = NHL.get(abbr, ("", ""))
     name = t.get("name") or {}
     return Team(
         abbr=abbr,
         name=str(name.get("default", abbr)) if isinstance(name, dict) else str(name),
         score=to_int(t.get("score")),
-        color=primary,
-        alt_color=alt,
     )
 
 

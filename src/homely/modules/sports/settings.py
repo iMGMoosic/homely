@@ -63,12 +63,13 @@ class SportsSettings(ModuleSettings):
     team_backgrounds: bool = Field(
         True,
         title="Team color backgrounds",
-        description="Tint each team's row with its color; off draws only a stripe",
+        description="Each team's row in its colors; off draws the names on black beside a color bar",
         json_schema_extra={"x-group": "Look", "x-order": 20},
     )
     text_color: str = Field(
         "#FFFFFF",
         title="Text color",
+        description="For the status line, and team names when team backgrounds are off",
         pattern=r"^#[0-9A-Fa-f]{6}$",
         json_schema_extra={"x-group": "Look", "x-order": 30, "format": "color"},
     )
