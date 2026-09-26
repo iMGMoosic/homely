@@ -10,12 +10,12 @@ import pytest
 
 from homely.core.module import FrameInfo
 from homely.modules.sports.module import SportsModule, game_day, grid, order_games
-from homely.modules.sports.providers import Game, Team, team_color
+from homely.modules.sports.providers import Game, Team, palette_for
 from homely.modules.sports.providers.espn import EspnProvider, parse_scoreboard
 from homely.modules.sports.providers.mlb import parse_schedule
 from homely.modules.sports.providers.nhl import parse_score
 from homely.modules.sports.settings import SportsSettings
-from homely.modules.sports.teams import MLB, NHL
+from homely.modules.sports.teams import MLB, NBA, NFL, NHL, Palette
 from homely.render.canvas import Canvas
 from homely.render.size import SUPPORTED_SIZES, Size
 from tests.conftest import make_ctx
@@ -31,7 +31,7 @@ def test_parse_mlb_schedule():
     assert len(games) == 12 and all(g.state == "final" and g.league == "mlb" for g in games)
     stl = games[0]
     assert (stl.away.abbr, stl.away.score, stl.home.abbr, stl.home.score) == ("STL", 1, "PIT", 2)
-    assert stl.home.name == "Pirates" and stl.home.color == MLB["PIT"][0]
+    assert stl.home.name == "Pirates" and stl.home.abbr in MLB
     assert Game.from_dict(stl.to_dict()) == stl
 
 
@@ -70,7 +70,7 @@ def test_parse_nhl_score():
     games = parse_score(json.loads((FIXTURES / "nhl_score_2026-03-10.json").read_text()))
     lak = games[0]
     assert (lak.away.abbr, lak.home.abbr, lak.state, lak.status) == ("LAK", "BOS", "final", "FINAL/OT")
-    assert lak.away.name == "Kings" and lak.away.color == NHL["LAK"][0]
+    assert lak.away.name == "Kings"
     assert all(g.away.abbr in NHL and g.home.abbr in NHL for g in games)
 
 
@@ -96,33 +96,64 @@ async def test_espn_falls_back_to_second_host():
     assert games and hosts == ["site.api.espn.com", "site.web.api.espn.com"]
 
 
-def test_team_color_skips_black_and_navy_stays_blue():
-    assert team_color("000000", "fdb827") == (0xFD, 0xB8, 0x27)  # Pirates: black -> gold
-    assert team_color("000000", "c4ced4") == (0xC4, 0xCE, 0xD4)  # White Sox: black -> silver
-    assert team_color("031f40", "e20e32") == (0x03, 0x1F, 0x40)  # Twins navy is kept (lifted when drawn)
-    assert team_color("", "") == (200, 200, 200)
+def test_palettes_cover_every_team_each_feed_names():
+    mlb = parse_schedule(json.loads((FIXTURES / "mlb_schedule_2026-09-24.json").read_text()))
+    nhl = parse_score(json.loads((FIXTURES / "nhl_score_2026-03-10.json").read_text()))
+    nfl = parse_scoreboard(json.loads((FIXTURES / "espn_nfl_scoreboard.json").read_text()), "nfl", "football")
+    for table, games in ((MLB, mlb), (NHL, nhl), (NFL, nfl)):
+        assert {t.abbr for g in games for t in g.teams()} <= set(table)
+    assert (len(MLB), len(NFL), len(NBA), len(NHL)) == (30, 32, 30, 32)
 
 
-def t(abbr: str, name: str, score: int | None, colors: tuple[str, str]) -> Team:
+def test_palette_used_as_written_with_espn_fallback():
+    twins = palette_for("mlb", Team("MIN", "Twins", 5))
+    assert twins == Palette((12, 35, 64), (255, 255, 255), (186, 12, 47))
+    assert palette_for("nhl", Team("MIN", "Wild", 2)) == NHL["MIN"]
+    assert palette_for("nfl", Team("PIT", "Steelers", 7)).text == (0, 0, 0)  # black on gold, as listed
+    lynx = palette_for("wnba", Team("MIN", "Lynx", 80, "266092", "79bc43"))
+    assert lynx == Palette((0x26, 0x60, 0x92), (255, 255, 255), (0x79, 0xBC, 0x43))
+    light = palette_for("mls", Team("X", "X", 0, "f5f5f5", ""))
+    assert light.text == (0, 0, 0) and light.accent == light.home
+
+
+def test_background_styles_and_old_bool_setting():
+    assert SportsSettings(team_backgrounds=True).team_backgrounds == "translucent"
+    assert SportsSettings(team_backgrounds=False).team_backgrounds == "off"
+    game = Game("nfl", "9", NOW, "final", Team("PIT", "Steelers", 7), Team("GB", "Packers", 21), "FINAL")
+    solid = SportsModule(make_ctx(Size(64, 32), now=NOW), SportsSettings(team_backgrounds="solid"))
+    assert solid._row_colors(game, game.away, (255, 255, 255)) == ((255, 182, 18), (0, 0, 0), (0, 0, 0))
+    tinted = SportsModule(make_ctx(Size(64, 32), now=NOW), SportsSettings())
+    band, ink, bar = tinted._row_colors(game, game.away, (255, 255, 255))
+    assert band == (76, 55, 5)  # 30% of the Steelers' gold
+    assert ink == (255, 182, 18) and bar == (255, 182, 18)  # black text and bar would vanish on the tint
+    band, ink, bar = tinted._row_colors(game, game.home, (255, 255, 255))
+    assert ink == (255, 255, 255) and bar == NFL["GB"].accent  # the Packers keep white text, gold bar
+    # The loser of a final is drawn like any other row.
+    assert tinted._row_colors(game, game.away, (255, 255, 255))[1] != (120, 120, 120)
+    off = SportsModule(make_ctx(Size(64, 32), now=NOW), SportsSettings(team_backgrounds="off"))
+    assert off._row_colors(game, game.away, (1, 2, 3))[:2] == (None, (1, 2, 3))
+
+
+def t(abbr: str, name: str, score: int | None, colors: tuple[str, str] = ("", "")) -> Team:
     return Team(abbr, name, score, *colors)
 
 
 GAMES = [
     Game(
         "mlb", "1", NOW - timedelta(hours=1), "live",
-        t("DET", "Tigers", 3, MLB["DET"]), t("MIN", "Twins", 5, MLB["MIN"]),
+        t("DET", "Tigers", 3), t("MIN", "Twins", 5),
         inning=7, top=True, outs=2, bases=(True, False, True),
     ),
-    Game("nhl", "2", NOW - timedelta(minutes=40), "live", t("CHI", "Blackhawks", 1, NHL["CHI"]),
-         t("MIN", "Wild", 2, NHL["MIN"]), "P2 12:01"),
+    Game("nhl", "2", NOW - timedelta(minutes=40), "live", t("CHI", "Blackhawks", 1),
+         t("MIN", "Wild", 2), "P2 12:01"),
     Game("nfl", "3", NOW - timedelta(hours=3), "final", t("ATL", "Falcons", 35, ("a71930", "000000")),
          t("GB", "Packers", 14, ("204e32", "ffb612")), "FINAL"),
     Game("wnba", "4", NOW + timedelta(hours=1), "pre", t("NY", "Liberty", None, ("86cebc", "000000")),
          t("MIN", "Lynx", None, ("266092", "79bc43"))),
-    Game("mlb", "5", NOW - timedelta(hours=2), "final", t("NYY", "Yankees", 6, MLB["NYY"]),
-         t("TB", "Rays", 4, MLB["TB"]), "F/10"),
-    Game("mlb", "6", NOW + timedelta(hours=2), "off", t("SEA", "Mariners", None, MLB["SEA"]),
-         t("HOU", "Astros", None, MLB["HOU"]), "PPD"),
+    Game("mlb", "5", NOW - timedelta(hours=2), "final", t("NYY", "Yankees", 6),
+         t("TB", "Rays", 4), "F/10"),
+    Game("mlb", "6", NOW + timedelta(hours=2), "off", t("SEA", "Mariners", None),
+         t("HOU", "Astros", None), "PPD"),
 ]  # fmt: skip
 
 

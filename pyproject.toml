@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "homely-display"
-version = "0.3.0"
+version = "0.3.1"
 description = "A Tidbyt-like LED matrix display for Raspberry Pi: clock, weather, news, transit, sports and more, configured from your phone."
 readme = "README.md"
 license = "MIT"

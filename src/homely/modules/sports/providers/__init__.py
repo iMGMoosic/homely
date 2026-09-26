@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from homely.modules.sports.providers.base import Game, SportsProvider, Team, team_color
+from homely.modules.sports.providers.base import Game, SportsProvider, Team, palette_for
 from homely.modules.sports.providers.espn import EspnProvider
 from homely.modules.sports.providers.mlb import MlbProvider
 from homely.modules.sports.providers.nhl import NhlProvider
@@ -43,4 +43,4 @@ def make_provider(league: str, http: httpx.AsyncClient) -> SportsProvider:
     return EspnProvider(http, lg.key, lg.sport, lg.espn)
 
 
-__all__ = ["LEAGUES", "Game", "League", "SportsProvider", "Team", "make_provider", "team_color"]
+__all__ = ["LEAGUES", "Game", "League", "SportsProvider", "Team", "make_provider", "palette_for"]

@@ -60,18 +60,30 @@ class SportsSettings(ModuleSettings):
     time_format: Literal["12h", "24h"] = Field(
         "12h", title="Time format", json_schema_extra={"x-group": "Look", "x-order": 10}
     )
-    team_backgrounds: bool = Field(
-        True,
+    team_backgrounds: Literal["translucent", "solid", "off"] = Field(
+        "translucent",
         title="Team color backgrounds",
-        description="Tint each team's row with its color; off draws only a stripe",
+        description=(
+            "translucent = a faint tint of the team color behind a solid bar; solid = the team's band, "
+            "text and bar colors as listed; off = names on black beside a color bar"
+        ),
         json_schema_extra={"x-group": "Look", "x-order": 20},
     )
     text_color: str = Field(
         "#FFFFFF",
         title="Text color",
+        description="For the status line, and team names when team backgrounds are off",
         pattern=r"^#[0-9A-Fa-f]{6}$",
         json_schema_extra={"x-group": "Look", "x-order": 30, "format": "color"},
     )
+
+    @field_validator("team_backgrounds", mode="before")
+    @classmethod
+    def _was_bool(cls, v: object) -> object:
+        # 0.3.0 had an on/off switch here; on meant the tinted look.
+        if isinstance(v, bool):
+            return "translucent" if v else "off"
+        return v
 
     @field_validator("favorites")
     @classmethod
