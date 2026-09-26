@@ -101,9 +101,9 @@ and basketball show period and clock.
 - **Team colors** work as on the MLB LED scoreboard: each team has a band color behind its row, a
   text color for its name and score, and an accent color for the bar at the row's edge. MLB, NFL,
   NBA and NHL palettes live in `modules/sports/teams.py`; other leagues use ESPN's colors (band and
-  bar) with black or white text. Text and bar colors are always drawn as listed;
-  `team_backgrounds` sets the band: `translucent` (the default) at 30%, `solid` at full strength,
-  `off` none (names on black beside a bar).
+  bar) with black or white text. `team_backgrounds` picks how they are drawn: `translucent` (the
+  default) tints the row with 30% of the team color behind a full-color bar, with light text;
+  `solid` draws band, text and bar exactly as listed; `off` draws names on black beside a bar.
 
 - **Favorites** are abbreviations or names (`MIN`, `Twins`); `MIN` matches every Minnesota team in
   the enabled leagues, `nhl:MIN` just the Wild. `show: favorites_first` (default) puts them first,

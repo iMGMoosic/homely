@@ -15,7 +15,7 @@ from homely.data.slot import DataSlot
 from homely.modules.sports.providers import LEAGUES, Game, SportsProvider, Team, make_provider, palette_for
 from homely.modules.sports.settings import SportsSettings
 from homely.render.canvas import Canvas
-from homely.render.color import AMBER, Color, dim, parse_color
+from homely.render.color import AMBER, Color, dim, lift, luminance, parse_color
 from homely.render.fonts import get_font
 from homely.render.fonts.bdf import BitmapFont
 from homely.render.layout import layout_fallback
@@ -319,18 +319,24 @@ class SportsModule(Module[SportsSettings]):
         c.text_centered(sy + (status_h - font_s.line_height), label, font_s, color)
 
     def _row_colors(self, g: Game, team: Team, text: Color) -> tuple[Color | None, Color, Color]:
-        """(band or None for no band, text, bar) for a team's row, from its palette as listed.
+        """(band or None for no band, text, bar) for a team's row.
 
-        solid draws the band at full strength; translucent draws it at 30%, a tint behind the name,
-        with the text and bar colors unchanged. off draws the name in the module's text color beside
-        a bar in the band color (the accent, when the band is black and would vanish).
+        solid draws the palette exactly as listed. translucent is the tinted look: the team color
+        at 30% behind the row and at full strength in the bar -- lifted first, or navy at 30% would
+        be black. On that dark tint the name is light: the palette's text color when it is light
+        enough, else the team color itself (the Steelers' black-on-gold becomes gold-on-dark-gold).
+        off draws the name in the module's text color beside a bar.
         """
         pal = palette_for(g.league, team)
         style = self.settings.team_backgrounds
+        if style == "solid":
+            return pal.home, pal.text, pal.accent
+        base = lift(pal.home, 0.55)
+        bar = pal.accent if max(pal.accent) >= BLACKISH else base
         if style == "off":
-            return None, text, pal.accent if max(pal.home) < BLACKISH else pal.home
-        band = pal.home if style == "solid" else dim(pal.home, TINT)
-        return band, pal.text, pal.accent
+            return None, text, base if max(pal.home) >= BLACKISH else bar
+        ink = pal.text if luminance(pal.text) >= 0.35 else base
+        return dim(base, TINT), ink, bar
 
     def _start_text(self, g: Game, roomy: bool) -> str:
         local = g.start.astimezone(self.ctx.location.tz)
