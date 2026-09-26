@@ -116,6 +116,24 @@ def test_palette_used_as_written_with_espn_fallback():
     assert light.text == (0, 0, 0) and light.accent == light.home
 
 
+def test_background_styles_and_old_bool_setting():
+    assert SportsSettings(team_backgrounds=True).team_backgrounds == "translucent"
+    assert SportsSettings(team_backgrounds=False).team_backgrounds == "off"
+    game = Game("nfl", "9", NOW, "final", Team("PIT", "Steelers", 7), Team("GB", "Packers", 21), "FINAL")
+    solid = SportsModule(make_ctx(Size(64, 32), now=NOW), SportsSettings(team_backgrounds="solid"))
+    assert solid._row_colors(game, game.away, (255, 255, 255)) == ((255, 182, 18), (0, 0, 0), (0, 0, 0))
+    tinted = SportsModule(make_ctx(Size(64, 32), now=NOW), SportsSettings())
+    band, ink, bar = tinted._row_colors(game, game.away, (255, 255, 255))
+    assert band == (76, 55, 5)  # 30% of the Steelers' gold
+    assert ink == (255, 182, 18) and bar == (255, 182, 18)  # black text and bar would vanish on the tint
+    band, ink, bar = tinted._row_colors(game, game.home, (255, 255, 255))
+    assert ink == (255, 255, 255) and bar == NFL["GB"].accent  # the Packers keep white text, gold bar
+    # The loser of a final is drawn like any other row.
+    assert tinted._row_colors(game, game.away, (255, 255, 255))[1] != (120, 120, 120)
+    off = SportsModule(make_ctx(Size(64, 32), now=NOW), SportsSettings(team_backgrounds="off"))
+    assert off._row_colors(game, game.away, (1, 2, 3))[:2] == (None, (1, 2, 3))
+
+
 def t(abbr: str, name: str, score: int | None, colors: tuple[str, str] = ("", "")) -> Team:
     return Team(abbr, name, score, *colors)
 

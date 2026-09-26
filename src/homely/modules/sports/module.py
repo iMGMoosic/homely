@@ -15,7 +15,7 @@ from homely.data.slot import DataSlot
 from homely.modules.sports.providers import LEAGUES, Game, SportsProvider, Team, make_provider, palette_for
 from homely.modules.sports.settings import SportsSettings
 from homely.render.canvas import Canvas
-from homely.render.color import AMBER, Color, dim, luminance, parse_color
+from homely.render.color import AMBER, Color, dim, lift, luminance, parse_color
 from homely.render.fonts import get_font
 from homely.render.fonts.bdf import BitmapFont
 from homely.render.layout import layout_fallback
@@ -31,10 +31,8 @@ STALE_AFTER = timedelta(minutes=30)
 STATE_RANK = {"live": 0, "pre": 1, "final": 2, "off": 3}
 BASE_ON: Color = (255, 200, 40)
 OUT_ON: Color = (255, 70, 60)
-LOSER_DIM = 0.35  # how much of a losing team's band and bar is left on a final
-LOSER_TEXT: Color = (120, 120, 120)
-LOSER_TEXT_ON_LIGHT: Color = (30, 30, 30)  # a white band dimmed is mid grey: grey text vanishes on it
-BLACKISH = 40  # a band darker than this in every channel is black on the panel
+TINT = 0.3  # how much of the team color shows behind a translucent row
+BLACKISH = 40  # a color darker than this in every channel is black on the panel
 TEAM_FONTS = ("10x20", "9x15", "7x13B", "6x10", "5x8", "4x6")
 
 
@@ -290,14 +288,13 @@ class SportsModule(Module[SportsSettings]):
         abbr_chars = max(len(g.away.abbr), len(g.home.abbr))
         score_chars = max(len(str(t.score)) for t in g.teams()) if show_scores else 0
         font = self._team_font(w, row_h, abbr_chars, max(2, score_chars), stripe)
-        leader = self._leader(g)
         # Wide cards have room for "Twins" instead of "MIN".
         score_w = font.default_advance * max(2, score_chars) + 4 if show_scores else 0
         use_names = all(font.measure(t.name) <= w - stripe - 2 - score_w - 2 for t in g.teams())
         for i, team in enumerate(g.teams()):
             y = i * row_h
-            band, ink, bar = self._row_colors(g, team, leader, text)
-            if self.settings.team_backgrounds:
+            band, ink, bar = self._row_colors(g, team, text)
+            if band is not None:
                 c.rect(0, y, w, row_h - 1, fill=band)
             c.rect(0, y, stripe, row_h - 1, fill=bar)
             ty = y + (row_h - 1 - font.line_height) // 2 + (1 if font.line_height % 2 == 0 else 0)
@@ -321,32 +318,25 @@ class SportsModule(Module[SportsSettings]):
         font_s, label = fit_text(label, fonts, w)
         c.text_centered(sy + (status_h - font_s.line_height), label, font_s, color)
 
-    def _row_colors(self, g: Game, team: Team, leader: Team | None, text: Color) -> tuple[Color, Color, Color]:
-        """(band, text, bar) for a team's row, straight from its palette.
+    def _row_colors(self, g: Game, team: Team, text: Color) -> tuple[Color | None, Color, Color]:
+        """(band or None for no band, text, bar) for a team's row.
 
-        The loser of a final keeps its colors at a third of their brightness with grey text, so the
-        row reads as greyed out rather than recolored. Without team backgrounds the row is black:
-        the name takes the module's text color and the bar the band color (or the accent, when the
-        band is black and would vanish).
+        solid draws the palette exactly as listed. translucent is the tinted look: the team color
+        at 30% behind the row and at full strength in the bar -- lifted first, or navy at 30% would
+        be black. On that dark tint the name is light: the palette's text color when it is light
+        enough, else the team color itself (the Steelers' black-on-gold becomes gold-on-dark-gold).
+        off draws the name in the module's text color beside a bar.
         """
         pal = palette_for(g.league, team)
-        lost = g.state == "final" and leader is not None and leader is not team
-        if self.settings.team_backgrounds:
-            band, ink, bar = pal.home, pal.text, pal.accent
-        else:
-            band, ink = (0, 0, 0), text
-            bar = pal.accent if max(pal.home) < BLACKISH else pal.home
-        if lost:
-            band = dim(band, LOSER_DIM)
-            return band, LOSER_TEXT_ON_LIGHT if luminance(band) >= 0.3 else LOSER_TEXT, dim(bar, LOSER_DIM)
-        return band, ink, bar
-
-    @staticmethod
-    def _leader(g: Game) -> Team | None:
-        a, b = g.away.score, g.home.score
-        if a is None or b is None or a == b:
-            return None
-        return g.away if a > b else g.home
+        style = self.settings.team_backgrounds
+        if style == "solid":
+            return pal.home, pal.text, pal.accent
+        base = lift(pal.home, 0.55)
+        bar = pal.accent if max(pal.accent) >= BLACKISH else base
+        if style == "off":
+            return None, text, base if max(pal.home) >= BLACKISH else bar
+        ink = pal.text if luminance(pal.text) >= 0.35 else base
+        return dim(base, TINT), ink, bar
 
     def _start_text(self, g: Game, roomy: bool) -> str:
         local = g.start.astimezone(self.ctx.location.tz)
