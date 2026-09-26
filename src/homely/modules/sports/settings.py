@@ -64,8 +64,8 @@ class SportsSettings(ModuleSettings):
         "translucent",
         title="Team color backgrounds",
         description=(
-            "translucent = a faint tint of the team color behind a solid bar; solid = the team's band, "
-            "text and bar colors as listed; off = names on black beside a color bar"
+            "translucent = the team's band color at 30% behind its text and bar colors; solid = the "
+            "band at full strength; off = names on black beside a color bar"
         ),
         json_schema_extra={"x-group": "Look", "x-order": 20},
     )
