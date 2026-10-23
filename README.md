@@ -48,6 +48,7 @@ The installer builds the LED driver, installs homely as a systemd service, disab
 | Transit (Metro Transit MSP real-time departures, stop picker) | available |
 | Sports scores (MLB, NFL, NBA, WNBA, NHL, MLS, Premier League; favorites first) | available |
 | Calendar (ICS links: Google, iCloud, Outlook) | available |
+| Video (YouTube via yt-dlp; loop, crop, zoom, color) | available |
 | Arcade game with a USB controller, Stocks, Spotify | later |
 
 Writing a module is a couple of files; see [CONTRIBUTING.md](CONTRIBUTING.md).
