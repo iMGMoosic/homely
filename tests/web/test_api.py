@@ -235,3 +235,9 @@ def test_transit_stop_picker_walks_route_direction_stop(client: TestClient, rt: 
     assert r.status_code == 404 and "not in service" in r.json()["detail"]
     assert client.get("/api/transit/nope/routes").status_code == 404
     assert client.get("/api/transit/metro_transit/directions?route=../x").status_code == 422
+
+
+def test_catalog_lists_tiers_in_order(client: TestClient):
+    tiers = [m["tier"] for m in client.get("/api/modules").json()]
+    order = {"need": 0, "want": 1, "cool": 2}
+    assert tiers == sorted(tiers, key=order.__getitem__) and tiers[-1] == "cool"

@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from homely.config.models import ModuleEntry
-from homely.core.module import Module, ModuleInfo, ModuleSettings
+from homely.core.module import Module, ModuleInfo, ModuleSettings, Tier
 from homely.render.layout import UnsupportedSize, resolve, supported_sizes
 from homely.render.size import SUPPORTED_SIZES, Size
 
@@ -54,7 +54,9 @@ class ModuleRegistry:
         return module_id in self._classes
 
     def all(self) -> list[type[Module[Any]]]:
-        return sorted(self._classes.values(), key=lambda c: (c.info.tier.value, c.info.name))
+        # Tier order is declaration order (need, want, cool), not alphabetical.
+        tiers = list(Tier)
+        return sorted(self._classes.values(), key=lambda c: (tiers.index(c.info.tier), c.info.name))
 
     def ids(self) -> list[str]:
         return sorted(self._classes)
