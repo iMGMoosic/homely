@@ -404,6 +404,9 @@ def upgrade(target: str | None, from_pypi: bool, no_restart: bool) -> None:
     import subprocess
     import urllib.request
 
+    venv_bin = Path(sys.executable).parent
+    if not os.access(Path(sys.prefix), os.W_OK):
+        raise click.ClickException(f"no permission to change {sys.prefix}; run `sudo homely upgrade`")
     repo = "imgmoosic/homely"
     if from_pypi:
         spec = f"homely-display=={target}" if target else "homely-display"
@@ -430,11 +433,23 @@ def upgrade(target: str | None, from_pypi: bool, no_restart: bool) -> None:
     result = subprocess.run(cmd)
     if result.returncode != 0:
         raise click.ClickException("install failed")
+    _link_onto_path(venv_bin / "homely")
     if not no_restart and shutil.which("systemctl") and os.geteuid() == 0:
         subprocess.run(["systemctl", "restart", "homely"], check=False)
         click.echo("homely restarted")
     else:
         click.echo("installed; restart homely to use the new version")
+
+
+def _link_onto_path(target: Path, link: Path = Path("/usr/local/bin/homely")) -> None:
+    """Make `homely` work without the venv path (installs before 0.4.1 did not do this)."""
+    if not target.exists() or link.exists() or link.is_symlink() or not os.access(link.parent, os.W_OK):
+        return
+    try:
+        link.symlink_to(target)
+        click.echo(f"linked {link} -> {target}")
+    except OSError:
+        pass
 
 
 @main.command()

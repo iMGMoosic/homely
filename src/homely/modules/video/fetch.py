@@ -22,7 +22,7 @@ META = "video.json"
 # much heavier). Video only -- the board has no speaker -- unless a site only offers muxed files.
 FORMAT = "bv*[height<={h}][vcodec^=avc1]/bv*[height<={h}]/b[height<={h}]/wv*/w"
 JS_RUNTIMES = ("deno", "node", "bun", "quickjs")
-EXTRA_BIN_DIRS = (Path("/opt/homely/bin"), Path.home() / ".deno" / "bin")
+INSTALL_BIN_DIR = Path("/opt/homely/bin")  # where install.sh puts Deno
 
 
 class VideoError(Exception):
@@ -59,14 +59,41 @@ class VideoFile:
         )
 
 
+def _user_home() -> Path | None:
+    """Home of the user this process runs as now.
+
+    Not $HOME: systemd starts homely as root (HOME=/root) and it then drops to the homely user,
+    which cannot read /root at all.
+    """
+    try:
+        import pwd
+
+        return Path(pwd.getpwuid(os.geteuid()).pw_dir)
+    except (ImportError, KeyError):
+        return None
+
+
+def extra_bin_dirs() -> list[Path]:
+    dirs = [INSTALL_BIN_DIR]
+    home = _user_home()
+    if home is not None:
+        dirs.append(home / ".deno" / "bin")  # where Deno's own installer puts it
+    return dirs
+
+
 def find_binary(name: str) -> str | None:
     found = shutil.which(name)
     if found:
         return found
-    for d in EXTRA_BIN_DIRS:
+    for d in extra_bin_dirs():
         p = d / name
-        if p.is_file() and os.access(p, os.X_OK):
-            return str(p)
+        try:
+            # Before Python 3.14, is_file() raises rather than returning False when a parent
+            # directory is unreadable; a place we cannot look into simply has nothing for us.
+            if p.is_file() and os.access(p, os.X_OK):
+                return str(p)
+        except OSError:
+            continue
     return None
 
 

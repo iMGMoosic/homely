@@ -99,6 +99,7 @@ if [ "$UNINSTALL" = 1 ]; then
   log "Stopping and removing the homely service"
   systemctl disable --now homely 2>/dev/null || true
   rm -f /etc/systemd/system/homely.service /etc/avahi/services/homely.service /etc/sudoers.d/homely
+  [ -L /usr/local/bin/homely ] && rm -f /usr/local/bin/homely
   systemctl daemon-reload
   rm -rf "$PREFIX"
   if [ "$PURGE" = 1 ]; then rm -rf "$CONF_DIR" "$STATE_DIR"; userdel "$USER_NAME" 2>/dev/null || true; fi
@@ -200,6 +201,8 @@ else
   fi
 fi
 "$VENV/bin/homely" version
+# Put the CLI on PATH (sudo's secure_path includes /usr/local/bin), so `sudo homely upgrade` works.
+ln -sfn "$VENV/bin/homely" /usr/local/bin/homely
 
 # ---------- deno (the video module's YouTube downloads) ----------
 # YouTube makes clients solve a JavaScript challenge; yt-dlp needs a JS runtime for that. Debian's
@@ -286,8 +289,8 @@ echo
 log "homely is installed."
 echo "    Web UI:   http://$(hostname).local:8080   or   http://${IP:-<pi-ip>}:8080"
 echo "    Logs:     journalctl -u homely -f"
-echo "    Doctor:   sudo $VENV/bin/homely doctor"
-echo "    Upgrade:  re-run this installer"
+echo "    Doctor:   sudo homely doctor"
+echo "    Upgrade:  sudo homely upgrade   (re-run this installer for new system packages)"
 if [ "$REBOOT" = 1 ]; then
   echo
   warn "Boot configuration changed. Reboot to apply (sudo reboot)."

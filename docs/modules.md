@@ -153,8 +153,8 @@ frames. Add the module more than once for several videos.
 
 Needs **ffmpeg** and, for YouTube, a **JavaScript runtime**: YouTube makes clients solve a
 challenge, which yt-dlp does with Deno (or Node 22+, Bun, QuickJS). `install.sh` installs ffmpeg
-and a pinned, checksum-verified Deno into `/opt/homely/bin`; `homely doctor` reports both.
-YouTube changes often and yt-dlp keeps up: `homely upgrade` updates yt-dlp every time. When a
+and a pinned, checksum-verified Deno into `/opt/homely/bin`; `sudo homely doctor` reports both.
+YouTube changes often and yt-dlp keeps up: `sudo homely upgrade` updates yt-dlp every time. When a
 download fails the panel shows a hint (video unavailable, needs a sign-in, check the network, or
 try `homely upgrade`).
 
