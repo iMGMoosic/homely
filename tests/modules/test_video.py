@@ -23,6 +23,28 @@ from tests.conftest import FROZEN, make_ctx
 from tests.golden_util import assert_golden
 
 WIDE = Size(128, 32)
+
+
+def _ffmpeg_on_path() -> None:
+    """Without a system ffmpeg, use the static one from the imageio-ffmpeg wheel (a dev dependency).
+
+    CI takes this route: apt mirrors on the hosted runners hang often enough to fail builds.
+    """
+    if shutil.which("ffmpeg"):
+        return
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return
+    import os
+    import tempfile
+
+    bindir = Path(tempfile.mkdtemp(prefix="homely-ffmpeg-"))
+    (bindir / "ffmpeg").symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
+    os.environ["PATH"] = f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
+_ffmpeg_on_path()
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 
 

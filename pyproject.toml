@@ -47,6 +47,7 @@ dev = [
   "types-PyYAML",
   "httpx>=0.27",
   "build",
+  "imageio-ffmpeg>=0.5",  # a static ffmpeg for the video tests where none is installed
 ]
 
 [project.scripts]

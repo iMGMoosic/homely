@@ -18,11 +18,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: ffmpeg (the video module's tests decode real files)
-        timeout-minutes: 5
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: sudo -E apt-get update -qq && sudo -E apt-get install -y -qq --no-install-recommends ffmpeg
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
       - run: ruff format --check src tests
