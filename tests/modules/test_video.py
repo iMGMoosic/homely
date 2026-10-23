@@ -383,3 +383,33 @@ def test_changing_the_picture_mid_turn_carries_on_from_the_same_frame(red_then_b
         assert mod._player is not None and mod._player.position() >= 1.3  # not back at the start
     finally:
         mod.on_exit()
+
+
+@pytest.mark.skipif(sys.platform == "win32" or __import__("os").geteuid() == 0, reason="root reads anything")
+def test_find_binary_skips_directories_it_cannot_read(tmp_path, monkeypatch):
+    # On the Pi homely starts as root (HOME=/root) and drops to the homely user, which cannot read
+    # /root: looking for ~/.deno/bin/node there used to raise PermissionError and fail the download.
+    locked = tmp_path / "root"
+    (locked / ".deno" / "bin").mkdir(parents=True)
+    usable = tmp_path / "bin"
+    usable.mkdir()
+    deno = usable / "deno"
+    deno.write_text("#!/bin/sh\n")
+    deno.chmod(0o755)
+    locked.chmod(0o000)
+    try:
+        monkeypatch.setattr(fetch, "extra_bin_dirs", lambda: [locked / ".deno" / "bin", usable])
+        monkeypatch.setattr(fetch.shutil, "which", lambda name: None)
+        assert fetch.find_binary("node") is None
+        assert fetch.find_binary("deno") == str(deno)
+        assert fetch.js_runtimes() == {"deno": {"path": str(deno)}}
+    finally:
+        locked.chmod(0o755)
+
+
+def test_extra_bin_dirs_use_the_running_users_home_not_HOME(monkeypatch):
+    import pwd
+
+    monkeypatch.setenv("HOME", "/root")
+    home = pwd.getpwuid(__import__("os").geteuid()).pw_dir
+    assert fetch.extra_bin_dirs() == [fetch.INSTALL_BIN_DIR, Path(home) / ".deno" / "bin"]
