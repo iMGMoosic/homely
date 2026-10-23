@@ -19,6 +19,7 @@ from homely.modules.sports import SportsModule
 from homely.modules.starfield import StarfieldModule
 from homely.modules.transit import TransitModule
 from homely.modules.tree import TreeModule
+from homely.modules.video import VideoModule
 from homely.modules.weather import WeatherModule
 
 
@@ -30,6 +31,7 @@ def builtin_modules() -> list[type[Module[Any]]]:
         TransitModule,
         SportsModule,
         CalendarModule,
+        VideoModule,
         MazeModule,
         QixModule,
         StarfieldModule,

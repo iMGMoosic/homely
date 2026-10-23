@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "homely-display"
-version = "0.3.1"
+version = "0.4.0"
 description = "A Tidbyt-like LED matrix display for Raspberry Pi: clock, weather, news, transit, sports and more, configured from your phone."
 readme = "README.md"
 license = "MIT"
@@ -35,6 +35,7 @@ dependencies = [
   "feedparser>=6.0",
   "icalendar>=6.0",
   "recurring-ical-events>=3.3",
+  "yt-dlp[default]>=2026.1",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,7 @@ dev = [
   "types-PyYAML",
   "httpx>=0.27",
   "build",
+  "imageio-ffmpeg>=0.5",  # a static ffmpeg for the video tests where none is installed
 ]
 
 [project.scripts]
@@ -90,7 +92,7 @@ files = ["src/homely"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["rgbmatrix", "rgbmatrix.*", "yaml", "feedparser", "recurring_ical_events"]
+module = ["rgbmatrix", "rgbmatrix.*", "yaml", "feedparser", "recurring_ical_events", "yt_dlp", "yt_dlp.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

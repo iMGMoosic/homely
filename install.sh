@@ -124,7 +124,8 @@ BOOT=/boot/firmware; [ -d "$BOOT" ] || BOOT=/boot
 log "Installing system packages"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-  git build-essential cmake python3 python3-venv python3-dev python3-pip cython3 avahi-daemon curl ca-certificates
+  git build-essential cmake python3 python3-venv python3-dev python3-pip cython3 avahi-daemon curl ca-certificates \
+  ffmpeg unzip
 
 # ---------- user & dirs ----------
 if ! id "$USER_NAME" >/dev/null 2>&1; then
@@ -199,6 +200,29 @@ else
   fi
 fi
 "$VENV/bin/homely" version
+
+# ---------- deno (the video module's YouTube downloads) ----------
+# YouTube makes clients solve a JavaScript challenge; yt-dlp needs a JS runtime for that. Debian's
+# Node is too old for it (yt-dlp wants 22+), so install Deno, yt-dlp's default, pinned and
+# checksum-verified. Not fatal: without it yt-dlp still finds some formats for most videos.
+DENO_VERSION=2.9.8
+if [ "$(uname -m)" = aarch64 ]; then
+  if ! "$PREFIX/bin/deno" --version 2>/dev/null | grep -q "^deno $DENO_VERSION "; then
+    log "Installing Deno $DENO_VERSION for YouTube downloads"
+    DENO_URL="https://github.com/denoland/deno/releases/download/v$DENO_VERSION/deno-aarch64-unknown-linux-gnu.zip"
+    DENO_TMP=$(mktemp -d)
+    if fetch "$DENO_URL" -o "$DENO_TMP/deno.zip" && fetch "$DENO_URL.sha256sum" -o "$DENO_TMP/deno.sha256" \
+      && [ "$(sha256sum "$DENO_TMP/deno.zip" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$DENO_TMP/deno.sha256")" ]; then
+      mkdir -p "$PREFIX/bin"
+      unzip -q -o "$DENO_TMP/deno.zip" -d "$PREFIX/bin" && chmod 755 "$PREFIX/bin/deno"
+    else
+      warn "could not download or verify Deno; YouTube videos may fail to download"
+    fi
+    rm -rf "$DENO_TMP"
+  fi
+else
+  warn "no Deno build for $(uname -m); YouTube videos may fail to download"
+fi
 
 # ---------- config ----------
 if [ ! -f "$CONF_DIR/config.yaml" ]; then

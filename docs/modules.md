@@ -15,6 +15,7 @@
 | Transit | Want | available | Metro Transit NexTrip (Minneapolis/St. Paul), pluggable providers |
 | Sports scores | Want | available | MLB Stats API, NHL web API, ESPN (NFL, NBA, WNBA, MLS, Premier League) |
 | Calendar | Want | available | ICS links |
+| Video | Looks cool | available | YouTube (anything yt-dlp supports) |
 | Arcade game | Looks cool | planned | USB controller |
 | Stocks | Looks cool | planned | Finnhub |
 | Spotify | Looks cool | planned | Spotify Web API (your own client id) |
@@ -128,6 +129,34 @@ events and exceptions are expanded; cancelled events are left out.
   coming up the turn is skipped unless `show_when_empty` is on.
 - A secret ICS address is stored in `config.yaml` on the Pi like the other settings; anyone who
   can read that file or open the web UI can see it.
+
+## Video
+
+Plays a YouTube video (or anything else yt-dlp can download) on the panel. Paste the link; the
+video is downloaded once, at low resolution and without sound, and kept on the Pi, so the
+panel shows "Downloading 42%" the first time. Each turn ffmpeg decodes it straight to panel-sized
+frames. Add the module more than once for several videos.
+
+- **Playback**: `loop` starts over when the video ends. `turn_seconds` is how long it stays on the
+  board each turn: 0 is one play-through; longer than the video loops to fill the time, or ends
+  the turn with the video when looping is off. `resume` picks up where the last turn left off
+  (off restarts every turn). `start_at`/`end_at` play only part of the video. `speed` and `fps`.
+- **Picture**: `fit` is `fill` (crop to cover the panel; a 16:9 video on 128x32 keeps a band
+  through the middle), `fit` (the whole frame with black bars) or `stretch`. `zoom` crops further
+  in, and the two crop-position sliders choose which part is kept. `mirror`; `scaling` smooth
+  (area averaging, best for most video), sharp (Lanczos) or pixel (nearest neighbour);
+  `brightness`, `contrast` and `saturation`; `show_title` scrolls the title along the bottom for
+  the first few seconds of each turn.
+- Changing a picture or playback setting carries on from the frame on the panel.
+- `download quality` (144-480 lines): the panel needs very little; more only helps when zoomed in.
+  H.264 is preferred because it is the cheapest to decode on a Pi 4.
+
+Needs **ffmpeg** and, for YouTube, a **JavaScript runtime**: YouTube makes clients solve a
+challenge, which yt-dlp does with Deno (or Node 22+, Bun, QuickJS). `install.sh` installs ffmpeg
+and a pinned, checksum-verified Deno into `/opt/homely/bin`; `homely doctor` reports both.
+YouTube changes often and yt-dlp keeps up: `homely upgrade` updates yt-dlp every time. When a
+download fails the panel shows a hint (video unavailable, needs a sign-in, check the network, or
+try `homely upgrade`).
 
 ## Maze (idle animation)
 
