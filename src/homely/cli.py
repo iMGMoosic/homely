@@ -370,6 +370,17 @@ def doctor(config_path: str | None, state_dir: str | None) -> None:
                 True if "isolcpus" in cmdline.read_text(errors="ignore") else None,
                 "isolcpus set in cmdline.txt (recommended)",
             )
+    from homely.modules.video.fetch import find_binary, js_runtimes
+
+    ffmpeg = find_binary("ffmpeg")
+    line(True if ffmpeg else None, f"ffmpeg: {ffmpeg}" if ffmpeg else "ffmpeg missing (needed by the Video module)")
+    runtimes = ", ".join(js_runtimes()) or None
+    line(
+        True if runtimes else None,
+        f"JavaScript runtime for YouTube downloads: {runtimes}"
+        if runtimes
+        else "no JavaScript runtime (Deno) for YouTube downloads; re-run install.sh",
+    )
     fonts = available_fonts()
     line(len(fonts) >= 10, f"{len(fonts)} fonts available")
     line(
@@ -408,12 +419,14 @@ def upgrade(target: str | None, from_pypi: bool, no_restart: bool) -> None:
             raise click.ClickException(f"release {release.get('tag_name')} has no wheel asset")
         spec = wheels[0]
         click.echo(f"installing {release.get('tag_name')} from {spec}")
-    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", spec]
+    # yt-dlp has to keep up with YouTube, so it is upgraded every time too, not only when the
+    # new homely release happens to require a newer one.
+    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", spec, "yt-dlp[default]"]
     if subprocess.run([sys.executable, "-m", "pip", "--version"], capture_output=True).returncode != 0:
         uv = shutil.which("uv")
         if not uv:
             raise click.ClickException("neither pip nor uv is available in this environment")
-        cmd = [uv, "pip", "install", "--python", sys.executable, "--upgrade", spec]
+        cmd = [uv, "pip", "install", "--python", sys.executable, "--upgrade", spec, "yt-dlp[default]"]
     result = subprocess.run(cmd)
     if result.returncode != 0:
         raise click.ClickException("install failed")

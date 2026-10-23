@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      - name: ffmpeg (the video module's tests decode real files)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
       - run: ruff format --check src tests
