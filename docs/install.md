@@ -48,6 +48,7 @@ sudo cp packaging/homely.service /etc/systemd/system/ && sudo systemctl enable -
 
 ```bash
 journalctl -u homely -f                       # logs
-sudo /opt/homely/venv/bin/homely doctor       # health check
+sudo homely doctor                            # health check
+sudo homely upgrade                           # newest release (and yt-dlp), then restart
 sudo systemctl restart homely
 ```
