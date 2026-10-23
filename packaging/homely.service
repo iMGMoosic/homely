@@ -11,6 +11,9 @@ Type=simple
 User=root
 Environment=PYTHONUNBUFFERED=1
 Environment=HOMELY_STATE_DIR=/var/lib/homely
+# The homely user's home: after the privilege drop /root is unreadable, and tools it runs
+# (yt-dlp, Deno) look for their files under $HOME.
+Environment=HOME=/var/lib/homely
 ExecStart=/opt/homely/venv/bin/homely run --config /etc/homely/config.yaml
 # A restart from the web UI re-execs the process in place; this covers crashes.
 Restart=always
